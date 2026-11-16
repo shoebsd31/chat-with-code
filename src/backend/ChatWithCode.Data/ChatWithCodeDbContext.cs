@@ -14,6 +14,8 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Citation> Citations => Set<Citation>();
+    public DbSet<IndexedFile> IndexedFiles => Set<IndexedFile>();
+    public DbSet<CodeChunkRecord> CodeChunks => Set<CodeChunkRecord>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -26,6 +28,8 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        modelBuilder.HasPostgresExtension("vector");
 
         modelBuilder.Entity<Organization>(e =>
         {
@@ -96,6 +100,32 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
             e.HasOne<Conversation>().WithMany(x => x.Messages).HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
             e.Property(x => x.Model).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<IndexedFile>(e =>
+        {
+            e.HasOne<IndexedBranch>().WithMany().HasForeignKey(x => x.IndexedBranchId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.IndexedBranchId, x.Path }).IsUnique();
+            e.Property(x => x.Path).HasMaxLength(2000);
+            e.Property(x => x.BlobId).HasMaxLength(40);
+            e.Property(x => x.SkipReason).HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<CodeChunkRecord>(e =>
+        {
+            e.ToTable("code_chunks");
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.Branch).HasMaxLength(400);
+            e.Property(x => x.Path).HasMaxLength(2000);
+            e.Property(x => x.Language).HasMaxLength(32);
+            e.Property(x => x.Symbol).HasMaxLength(500);
+            e.Property(x => x.CommitId).HasMaxLength(40);
+            e.Property(x => x.Embedding).HasColumnType($"vector({CodeChunkRecord.Dimensions})");
+            e.HasIndex(x => new { x.RepositoryId, x.Branch, x.Path });
+            e.HasIndex(x => x.Embedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
+            // 'simple' keeps identifiers as written (no English stemming), which suits code.
+            e.HasGeneratedTsVectorColumn(x => x.SearchVector!, "simple", x => new { x.Path, x.Symbol, x.Content })
+                .HasIndex(x => x.SearchVector!).HasMethod("GIN");
         });
 
         modelBuilder.Entity<Citation>(e =>

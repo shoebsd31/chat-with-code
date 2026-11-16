@@ -7,6 +7,9 @@ WORKDIR /src
 COPY global.json Directory.Build.props .editorconfig ./
 COPY ChatWithCode.Core/ChatWithCode.Core.csproj ChatWithCode.Core/
 COPY ChatWithCode.Data/ChatWithCode.Data.csproj ChatWithCode.Data/
+COPY ChatWithCode.AzureDevOps/ChatWithCode.AzureDevOps.csproj ChatWithCode.AzureDevOps/
+COPY ChatWithCode.AzureOpenAI/ChatWithCode.AzureOpenAI.csproj ChatWithCode.AzureOpenAI/
+COPY ChatWithCode.VectorStores.PgVector/ChatWithCode.VectorStores.PgVector.csproj ChatWithCode.VectorStores.PgVector/
 COPY ChatWithCode.Api/ChatWithCode.Api.csproj ChatWithCode.Api/
 COPY ChatWithCode.Worker/ChatWithCode.Worker.csproj ChatWithCode.Worker/
 RUN dotnet restore ChatWithCode.Api/ChatWithCode.Api.csproj \
@@ -14,6 +17,9 @@ RUN dotnet restore ChatWithCode.Api/ChatWithCode.Api.csproj \
 
 COPY ChatWithCode.Core/ ChatWithCode.Core/
 COPY ChatWithCode.Data/ ChatWithCode.Data/
+COPY ChatWithCode.AzureDevOps/ ChatWithCode.AzureDevOps/
+COPY ChatWithCode.AzureOpenAI/ ChatWithCode.AzureOpenAI/
+COPY ChatWithCode.VectorStores.PgVector/ ChatWithCode.VectorStores.PgVector/
 COPY ChatWithCode.Api/ ChatWithCode.Api/
 COPY ChatWithCode.Worker/ ChatWithCode.Worker/
 RUN dotnet publish ChatWithCode.Api/ChatWithCode.Api.csproj -c Release -o /out/api --no-restore \

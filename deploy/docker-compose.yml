@@ -36,7 +36,12 @@ services:
       AzureDevOps__ServicePrincipal__TenantId: ${ADO_SP_TENANT_ID:-}
       AzureDevOps__ServicePrincipal__ClientId: ${ADO_SP_CLIENT_ID:-}
       AzureDevOps__ServicePrincipal__ClientSecret: ${ADO_SP_CLIENT_SECRET:-}
-      AzureDevOps__PersonalAccessToken: ${ADO_PAT:-}
+      AzureOpenAI__Endpoint: ${AZURE_OPENAI_ENDPOINT:-}
+      AzureOpenAI__ApiKey: ${AZURE_OPENAI_API_KEY:-}
+      AzureOpenAI__UseManagedIdentity: ${AZURE_OPENAI_USE_MANAGED_IDENTITY:-false}
+      AzureOpenAI__EmbeddingDeployment: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
+      AzureOpenAI__ChatDeployment: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-}
+      Indexing__MaxFileSizeKb: ${INDEX_MAX_FILE_KB:-500}
       Indexing__PollingEnabled: ${INDEX_POLLING_ENABLED:-true}
       Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-5}
       Security__AllowedOrigins__0: ${EXTENSION_ORIGIN:-}

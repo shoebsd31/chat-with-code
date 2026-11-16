@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <!-- Test naming and style rules that do not fit xUnit tests. -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1062;CA2000;CA1001;CA1849;CA1861</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1062;CA2000;CA1001;CA1849;CA1861;CA1305;CA5350;CA5394</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +28,9 @@
     <ProjectReference Include="..\..\ChatWithCode.Data\ChatWithCode.Data.csproj" />
     <ProjectReference Include="..\..\ChatWithCode.Api\ChatWithCode.Api.csproj" />
     <ProjectReference Include="..\..\ChatWithCode.Worker\ChatWithCode.Worker.csproj" />
+    <ProjectReference Include="..\..\ChatWithCode.AzureDevOps\ChatWithCode.AzureDevOps.csproj" />
+    <ProjectReference Include="..\..\ChatWithCode.AzureOpenAI\ChatWithCode.AzureOpenAI.csproj" />
+    <ProjectReference Include="..\..\ChatWithCode.VectorStores.PgVector\ChatWithCode.VectorStores.PgVector.csproj" />
   </ItemGroup>
 
 </Project>

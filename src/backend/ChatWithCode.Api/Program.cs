@@ -2,7 +2,7 @@ using System.Reflection;
 using ChatWithCode.Api;
 using ChatWithCode.Core.Options;
 using ChatWithCode.Data;
-using Microsoft.AspNetCore.DataProtection;
+using ChatWithCode.Data.Settings;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -28,9 +28,6 @@ builder.Services.AddOptions<SecurityOptions>()
 builder.Services.AddChatWithCodeData(builder.Configuration);
 
 var security = builder.Configuration.GetSection(SecurityOptions.SectionName).Get<SecurityOptions>() ?? new SecurityOptions();
-builder.Services.AddDataProtection()
-    .SetApplicationName("ChatWithCode")
-    .PersistKeysToFileSystem(new DirectoryInfo(security.DataProtectionKeysPath));
 
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 {
@@ -51,6 +48,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
     await using var scope = app.Services.CreateAsyncScope();
     var organization = scope.ServiceProvider.GetRequiredService<IOptions<AzureDevOpsOptions>>().Value.Organization;
     await scope.ServiceProvider.GetRequiredService<DatabaseInitializer>().InitializeAsync(organization);
+    await scope.ServiceProvider.GetRequiredService<ModelSettingsBootstrapper>().ApplyAsync();
 }
 
 app.UseExceptionHandler();

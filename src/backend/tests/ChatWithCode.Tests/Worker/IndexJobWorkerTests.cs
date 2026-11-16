@@ -55,7 +55,7 @@ public sealed class IndexJobWorkerTests(PostgresFixture postgres)
     private static IndexJobWorker CreateWorker(TestDb t, IIndexJobHandler handler)
     {
         var services = new ServiceCollection();
-        services.AddDbContext<ChatWithCodeDbContext>(o => o.UseNpgsql(t.ConnectionString).UseSnakeCaseNamingConvention());
+        services.AddDbContext<ChatWithCodeDbContext>(o => DataServiceCollectionExtensions.ConfigureDb(o, t.ConnectionString, retryOnFailure: false));
         services.AddSingleton<TimeProvider>(t.Clock);
         services.AddScoped<IndexJobQueue>();
         services.AddSingleton(handler);

@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
+using Pgvector;
 
 #nullable disable
 
@@ -20,6 +22,7 @@ namespace ChatWithCode.Data.Migrations
                 .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ChatWithCode.Data.Entities.Citation", b =>
@@ -72,6 +75,91 @@ namespace ChatWithCode.Data.Migrations
                         .HasDatabaseName("ix_citations_message_id");
 
                     b.ToTable("citations", (string)null);
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.CodeChunkRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Branch")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("branch");
+
+                    b.Property<string>("CommitId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("commit_id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content");
+
+                    b.Property<Vector>("Embedding")
+                        .IsRequired()
+                        .HasColumnType("vector(1536)")
+                        .HasColumnName("embedding");
+
+                    b.Property<int>("EndLine")
+                        .HasColumnType("integer")
+                        .HasColumnName("end_line");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("language");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("path");
+
+                    b.Property<Guid>("RepositoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("repository_id");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasColumnName("search_vector")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "simple")
+                        .HasAnnotation("Npgsql:TsVectorProperties", new[] { "Path", "Symbol", "Content" });
+
+                    b.Property<int>("StartLine")
+                        .HasColumnType("integer")
+                        .HasColumnName("start_line");
+
+                    b.Property<string>("Symbol")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("symbol");
+
+                    b.HasKey("Id")
+                        .HasName("pk_code_chunks");
+
+                    b.HasIndex("Embedding")
+                        .HasDatabaseName("ix_code_chunks_embedding");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Embedding"), "hnsw");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Embedding"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("SearchVector")
+                        .HasDatabaseName("ix_code_chunks_search_vector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
+
+                    b.HasIndex("RepositoryId", "Branch", "Path")
+                        .HasDatabaseName("ix_code_chunks_repository_id_branch_path");
+
+                    b.ToTable("code_chunks", (string)null);
                 });
 
             modelBuilder.Entity("ChatWithCode.Data.Entities.Conversation", b =>
@@ -234,6 +322,14 @@ namespace ChatWithCode.Data.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("last_indexed_commit");
 
+                    b.Property<int>("ProgressDone")
+                        .HasColumnType("integer")
+                        .HasColumnName("progress_done");
+
+                    b.Property<int>("ProgressTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("progress_total");
+
                     b.Property<Guid>("RepositoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("repository_id");
@@ -252,6 +348,48 @@ namespace ChatWithCode.Data.Migrations
                         .HasDatabaseName("ix_indexed_branches_repository_id_branch_name");
 
                     b.ToTable("indexed_branches", (string)null);
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.IndexedFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BlobId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("blob_id");
+
+                    b.Property<int>("ChunkCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("chunk_count");
+
+                    b.Property<Guid>("IndexedBranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("indexed_branch_id");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("path");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("skip_reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_indexed_files");
+
+                    b.HasIndex("IndexedBranchId", "Path")
+                        .IsUnique()
+                        .HasDatabaseName("ix_indexed_files_indexed_branch_id_path");
+
+                    b.ToTable("indexed_files", (string)null);
                 });
 
             modelBuilder.Entity("ChatWithCode.Data.Entities.Message", b =>
@@ -555,6 +693,16 @@ namespace ChatWithCode.Data.Migrations
                         .HasConstraintName("fk_indexed_branches_repositories_repository_id");
 
                     b.Navigation("Repository");
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.IndexedFile", b =>
+                {
+                    b.HasOne("ChatWithCode.Data.Entities.IndexedBranch", null)
+                        .WithMany()
+                        .HasForeignKey("IndexedBranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_indexed_files_indexed_branches_indexed_branch_id");
                 });
 
             modelBuilder.Entity("ChatWithCode.Data.Entities.Message", b =>

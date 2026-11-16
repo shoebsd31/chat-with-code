@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Draft for review** · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–2 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -111,22 +111,33 @@ trigger ─► fetch ─► filter ─► chunk ─► embed ─► upsert ─�
 - Admins also get a **"Re-index now"** button.
 
 **Fetch**
-- Uses the ADO Git REST API (items, commits/diffs) with the backend's own ADO identity:
-  an Entra **service principal** (recommended) or a PAT.
-- The first run lists the whole tree. Later runs only fetch the files changed since the last
-  indexed commit.
+- Uses the ADO Git REST API (refs, commits, recursive trees, blobs) with the backend's own
+  identity: an Entra **service principal** only (decided; no PATs).
+- Each run lists the tree at the target commit, with blob ids and sizes. The `indexed_files`
+  table remembers which blob id of each file was indexed, so only files whose blob id
+  changed are downloaded and embedded, and files no longer in the tree are removed. Renames
+  count as a removal plus an addition.
+- Progress is saved after every batch of 32 files. A job that fails midway resumes where it
+  stopped on retry.
 
 **Filter**
 - Skips binaries, vendored and generated folders (`node_modules`, `bin`, `obj`, `dist`,
-  …), lockfiles and minified files.
-- Respects `.gitignore` and a configurable max file size (default 500 KB).
+  …), lockfiles, minified files and source maps, plus files over a configurable size
+  (default 500 KB). Content is checked too: files with NUL bytes or invalid UTF-8 are skipped.
+- `.gitignore` is **not** used: committed files are by definition not ignored by it. Instead,
+  admins can add rules for every repository (`Indexing:ExcludeGlobs`), and each repository can
+  add a `.chatwithcodeignore` file (gitignore syntax, `!` re-includes) at its root.
 
 **Chunk**
 - **Markdown:** split by headings. Each chunk keeps its heading path.
 - **C#:** split by type and member using **Roslyn**.
-- **Other languages (v1):** a structure-aware heuristic chunker. It splits on
-  blank-line-separated blocks and on common function/class signatures, then caps chunks at
-  about 1,500 tokens with a small overlap.
+- **Other languages (v1):** splits at blank lines, merging blocks up to the limit; blocks too
+  big on their own are cut into windows with a 3-line overlap. The first declaration
+  (class, function, …) names the chunk.
+- Files at or under the limit (about 1,500 tokens, counted with the cl100k tokenizer the
+  embedding models use) stay whole.
+- The embedded text is a short header (file, language, symbol) plus the chunk, which helps
+  retrieval. The stored content is the chunk alone.
 - Every chunk carries metadata: repo, branch, path, language, start/end line, symbol name,
   commit.
 - Later: add tree-sitter for better results in more languages.
@@ -144,7 +155,15 @@ trigger ─► fetch ─► filter ─► chunk ─► embed ─► upsert ─�
 
 **Embedding model rule**
 - Each index records which embedding model and dimension size built it.
-- Changing either requires a full re-index. The UI warns before you do it.
+- Changing either triggers a full re-index automatically on the next run. The UI will warn
+  before you do it.
+
+**Before the settings UI (phase 4)**
+- Starting organization defaults come from configuration (`.env`) and are saved once, when
+  no organization settings exist yet.
+- Repositories are added with a worker command:
+  `docker compose run --rm worker index --project P --repo R [--branch B] [--full]`, and
+  `status` shows progress.
 
 ### 3.4 Retrieval and chat
 
@@ -214,7 +233,8 @@ OpenRouter, Ollama/vLLM) can share one OpenAI-compatible adapter.
 | `conversations` | user id, title, selected repos/branches, created/updated |
 | `messages` | conversation, role, content, model, token counts |
 | `citations` | message, repo, branch, path, line range, score |
-| `chunks` (pgvector only) | metadata + `embedding vector(1536)` (HNSW index) + `tsv tsvector` (GIN index) |
+| `indexed_files` | per branch: path, blob id last indexed, chunk count, skip reason |
+| `code_chunks` (pgvector only) | metadata + `embedding vector(1536)` (HNSW, cosine) + generated `search_vector tsvector` over path, symbol and content (GIN, `simple` config) |
 
 The job queue uses Postgres (`SELECT … FOR UPDATE SKIP LOCKED`), so self-hosting needs no
 separate queue service.
@@ -277,8 +297,7 @@ The .NET SDK isn't installed in this environment yet and will be installed in ph
 
 1. **Secret storage default:** ASP.NET Data Protection in Postgres, with Azure Key Vault as
    an option.
-2. **Backend's ADO identity:** an Entra service principal is recommended, with a PAT also
-   supported.
+2. **Backend's ADO identity:** decided: **service principal only**.
 3. **.NET version:** .NET 10 (LTS).
 4. **Extension publishing:** a private Marketplace extension shared with your organization.
    You'll need a Marketplace publisher account.

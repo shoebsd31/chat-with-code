@@ -1,5 +1,7 @@
 using ChatWithCode.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 
 namespace ChatWithCode.Data;
@@ -9,6 +11,11 @@ public sealed class DatabaseInitializer(ChatWithCodeDbContext db, TimeProvider c
 {
     public async Task InitializeAsync(string organizationName, CancellationToken cancellationToken = default)
     {
+        // On a brand-new database, EF Core looks up applied migrations before creating its history table,
+        // which logs a harmless but alarming error. Create the (empty) history table first for a clean first start.
+        // (The script is CREATE TABLE IF NOT EXISTS, so it is safe on every start.)
+        await db.Database.ExecuteSqlRawAsync(db.GetService<IHistoryRepository>().GetCreateIfNotExistsScript(), cancellationToken);
+
         var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
         if (pending.Count > 0)
         {

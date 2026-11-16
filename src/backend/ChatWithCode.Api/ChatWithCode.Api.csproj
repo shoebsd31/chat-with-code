@@ -3,6 +3,9 @@
   <ItemGroup>
     <ProjectReference Include="..\ChatWithCode.Core\ChatWithCode.Core.csproj" />
     <ProjectReference Include="..\ChatWithCode.Data\ChatWithCode.Data.csproj" />
+    <ProjectReference Include="..\ChatWithCode.AzureDevOps\ChatWithCode.AzureDevOps.csproj" />
+    <ProjectReference Include="..\ChatWithCode.AzureOpenAI\ChatWithCode.AzureOpenAI.csproj" />
+    <ProjectReference Include="..\ChatWithCode.VectorStores.PgVector\ChatWithCode.VectorStores.PgVector.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -69,9 +69,8 @@ public sealed class TestDb : IAsyncDisposable
     public ChatWithCodeDbContext NewContext() => NewContext(ConnectionString);
 
     private static ChatWithCodeDbContext NewContext(string connectionString) =>
-        new(new DbContextOptionsBuilder<ChatWithCodeDbContext>()
-            .UseNpgsql(connectionString)
-            .UseSnakeCaseNamingConvention()
+        new((DbContextOptions<ChatWithCodeDbContext>)DataServiceCollectionExtensions
+            .ConfigureDb(new DbContextOptionsBuilder<ChatWithCodeDbContext>(), connectionString, retryOnFailure: false)
             .Options);
 
     public ValueTask DisposeAsync() => Context.DisposeAsync();

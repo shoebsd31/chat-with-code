@@ -21,11 +21,11 @@ public sealed class AzureDevOpsOptions
     /// </summary>
     public string? ExtensionSecret { get; set; }
 
-    /// <summary>How the backend itself reads repositories when indexing.</summary>
-    public ServicePrincipalOptions? ServicePrincipal { get; set; }
-
-    /// <summary>Alternative to a service principal: a personal access token with Code (Read) scope.</summary>
-    public string? PersonalAccessToken { get; set; }
+    /// <summary>
+    /// The Microsoft Entra service principal the backend uses to read repositories.
+    /// It must be added to the Azure DevOps organization with Code (Read) access.
+    /// </summary>
+    public ServicePrincipalOptions ServicePrincipal { get; set; } = new();
 
     public Uri OrganizationUrl => new($"https://dev.azure.com/{Organization}/");
 }
