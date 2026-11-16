@@ -1,0 +1,54 @@
+# Builds and tests the Azure DevOps extension on every pull request and push to main.
+# Nothing is published; the packaged .vsix is attached to the run for manual testing.
+name: Extension CI
+
+on:
+  pull_request:
+    paths: ["src/extension/**", ".github/workflows/extension-*.yml"]
+  push:
+    branches: [main]
+    paths: ["src/extension/**", ".github/workflows/extension-*.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Type-check, test and package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/extension/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      # Packages with a placeholder address (or the CWC_BACKEND_URL repository variable, if set),
+      # so the package step itself is tested. Publishing builds again with the real address.
+      - name: Package
+        env:
+          BACKEND_URL: ${{ vars.CWC_BACKEND_URL || 'https://chat-with-code.example.invalid' }}
+          PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER || 'your-publisher-id' }}
+        run: npm run package -- --backend-url "$BACKEND_URL" --publisher "$PUBLISHER" --version "1.0.${{ github.run_number }}"
+
+      - name: Attach the .vsix to the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-with-code-vsix
+          path: src/extension/out/*.vsix
+          retention-days: 14

@@ -6,10 +6,10 @@ your indexed repositories and link to the exact files and lines they used.
 
 Everything runs on infrastructure you host. No GitHub Copilot or Claude is involved.
 
-> **Status: phase 3 of 8.** The backend indexes repositories into pgvector and answers
-> questions about them through a chat API: hybrid search, streamed answers with file and line
-> citations, saved conversations, and Azure DevOps permission checks. The Azure DevOps extension
-> (the chat screen) comes in phase 4. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
+> **Status: phase 4a of 8.** The backend indexes repositories and answers questions about them,
+> and the Azure DevOps extension adds **Repos > Chat with code**: streamed answers with links to
+> the exact lines, diagrams and saved conversations. GitHub Actions build and publish the
+> extension. Admin settings in Azure DevOps (models, which repositories to index) come next. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
 
 ## Before you start
 
@@ -153,6 +153,59 @@ collect everyone's sign-in tokens.
 To work on the screens without Azure DevOps, run `npm run dev` and open
 `http://localhost:5173/hub.html` (add `?theme=dark` for the dark theme). It uses sample data
 and never contacts a backend. `npm test` runs the unit tests.
+
+## Publish with GitHub Actions
+
+Two workflows live in `.github/workflows`:
+
+| Workflow | When | What |
+|---|---|---|
+| **Extension CI** | Every pull request and push to `main` that touches the extension | Unit tests and packaging; the `.vsix` is attached to the run |
+| **Publish extension** | Pushing a tag like `extension-v1.2.0`, or **Run workflow** in the Actions tab | Tests, packages with your backend address, and publishes to the Marketplace as a private extension shared with your organization |
+
+Publishing signs in as a Microsoft Entra app using GitHub's OIDC token (workload identity
+federation), as Microsoft recommends. No Marketplace token or client secret is stored in GitHub.
+
+**One-time setup**
+
+1. **Create the Entra app.** In the Azure portal: **Microsoft Entra ID > App registrations > New
+   registration**, for example `chat-with-code-publisher`. Copy its **Application (client) ID**
+   and **Directory (tenant) ID**.
+2. **Trust this repository.** On the app: **Certificates & secrets > Federated credentials > Add
+   credential > GitHub Actions deploying Azure resources**. Enter your GitHub organization and
+   repository, entity type **Environment**, environment name `marketplace`.
+3. **Create the GitHub environment.** In the repository: **Settings > Environments > New
+   environment** named `marketplace`. Optionally add required reviewers, so each release needs
+   approval. Add these environment variables:
+
+   | Variable | Value |
+   |---|---|
+   | `AZURE_CLIENT_ID` | The app's application (client) ID |
+   | `AZURE_TENANT_ID` | Your tenant ID |
+   | `MARKETPLACE_PUBLISHER` | Your Marketplace publisher ID |
+   | `ADO_ORGANIZATION` | The Azure DevOps organization to share the extension with |
+   | `CWC_BACKEND_URL` | Your backend address, for example `https://chat.contoso.com` |
+
+4. **Run the workflow once.** It packages, signs in, and prints the line
+   `Publishing as Marketplace identity: <id> <name>`. The first run fails at the publish step,
+   because the app isn't a member of your publisher yet.
+5. **Add the app to your publisher.** In the [Marketplace publisher portal](https://marketplace.visualstudio.com/manage):
+   your publisher > **Members** > **Add**. Enter the ID printed in step 4 and choose **Contributor**.
+6. **Run the workflow again.** It publishes and shares the extension.
+
+To release a new version, push a tag (the version must be higher than the published one):
+
+```bash
+git tag extension-v1.0.1
+```
+
+```bash
+git push origin extension-v1.0.1
+```
+
+Organizations that already have the extension installed get the update automatically. If the
+extension's scopes change, Azure DevOps asks an admin to approve the update, and the extension
+secret changes too: copy the new one into `ADO_EXTENSION_SECRET`.
 
 ## Chat API
 

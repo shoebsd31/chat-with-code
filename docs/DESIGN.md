@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–3 built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–3 and 4a built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -20,7 +20,9 @@ hosts.
 | Hosting | **Self-hosted** by each customer. Production target: **Azure Container Apps** (phase 8). Docker Compose for local and small installs. |
 | Permissions | **Respect ADO repo permissions.** Users can only get answers from repos they can read. |
 | Backend | **.NET** (ASP.NET Core API + background worker). |
-| Frontend | React + `azure-devops-extension-sdk` + `azure-devops-ui`, so it looks native to ADO. |
+| Frontend | React 19 + `azure-devops-extension-sdk`, built with Vite. Styled with the theme variables Azure DevOps provides, so it follows light and dark themes. (`azure-devops-ui` requires React 16, which is out of support.) |
+| Backend address | **Built in when the extension is packaged.** Org-wide extension settings can be changed by any user, so an address stored there could be redirected to collect sign-in tokens. |
+| Extension publishing | GitHub Actions: CI on pull requests; publishing on `extension-v*` tags or manually, signing in as an Entra app through GitHub OIDC (no stored secret). |
 | Where it appears | A hub **under Repos** ("Ask the Code"). Plus settings pages for admins. |
 | API keys | **Org admin sets defaults; project admins can override** for their project. Users never see keys. |
 | Model providers (v1) | **Azure OpenAI** only. The provider layer stays pluggable, so OpenAI, OpenRouter and local models can be added later. |
@@ -70,8 +72,10 @@ hosts.
   (the Repos group).
 - **Org settings page:** targets `ms.vss-web.collection-admin-hub-group`.
 - **Project settings page:** targets `ms.vss-web.project-admin-hub-group`.
-- **Backend URL:** each customer self-hosts, so the backend URL is set once per organization
-  and stored in the extension's data service. It isn't a secret.
+- **Backend URL:** built into the extension when it's packaged
+  (`npm run package -- --backend-url … --publisher …`). It isn't stored in extension data: those
+  settings can be changed by any user of the extension, which would let someone redirect
+  everyone's tokens to their own server.
 - **Calls to the backend send:**
   - `SDK.getAppToken()` as `Authorization: Bearer`: a JWT signed with the extension's secret.
     Its signature proves the request comes from our extension.
@@ -292,7 +296,8 @@ README.md                           setup guide
 | 1 | Backend skeleton | Solution, config, metadata DB + migrations, health endpoint, docker compose with pgvector |
 | 2 | Indexer | Index an ADO repo into pgvector (full + incremental), with unit tests for filtering and chunking |
 | 3 | Chat API | Hybrid retrieval, prompt, streaming answers with citations, saved history |
-| 4 | Extension | Ask the Code hub (repo picker, chat, sources, Mermaid) and both settings pages |
+| 4a | Extension: chat | "Chat with code" hub (repo picker, streaming chat, sources, Mermaid, history), connection test page, packaging, GitHub Actions publishing |
+| 4b | Extension: admin settings | Organization and project model settings; which repositories and branches to index; re-index button |
 | 5 | Azure AI Search | Second vector store adapter |
 | 6 | Auto re-index | Service hook receiver, polling fallback, branch selection, index status UI |
 | 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
