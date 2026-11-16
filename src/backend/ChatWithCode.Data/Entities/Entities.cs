@@ -1,0 +1,147 @@
+using ChatWithCode.Core.Domain;
+
+namespace ChatWithCode.Data.Entities;
+
+/// <summary>The Azure DevOps organization this backend serves (one per self-hosted install).</summary>
+public sealed class Organization
+{
+    public Guid Id { get; set; }
+    public required string Name { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Model and vector store settings. One row for the organization defaults (ProjectId = null)
+/// and at most one per project. A null value on a project row means "use the organization default".
+/// Secrets are stored encrypted (ASP.NET Data Protection) and are never returned by the API.
+/// </summary>
+public sealed class ModelSettings
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public SettingScope Scope { get; set; }
+
+    /// <summary>Azure DevOps project id. Null for the organization-level row.</summary>
+    public Guid? ProjectId { get; set; }
+
+    public ModelProviderKind? Provider { get; set; }
+    public string? AzureOpenAIEndpoint { get; set; }
+    public string? ChatDeployment { get; set; }
+    public string? EmbeddingDeployment { get; set; }
+    public int? EmbeddingDimensions { get; set; }
+    public bool? UseManagedIdentity { get; set; }
+    public string? ApiKeyProtected { get; set; }
+
+    public VectorStoreKind? VectorStore { get; set; }
+    public string? AzureSearchEndpoint { get; set; }
+    public string? AzureSearchIndexName { get; set; }
+    public string? AzureSearchApiKeyProtected { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
+/// <summary>An Azure DevOps Git repository that an admin enabled for indexing.</summary>
+public sealed class Repository
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid AdoRepositoryId { get; set; }
+    public Guid AdoProjectId { get; set; }
+    public required string ProjectName { get; set; }
+    public required string Name { get; set; }
+    public string? DefaultBranch { get; set; }
+    public bool IsEnabled { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public List<IndexedBranch> Branches { get; set; } = [];
+}
+
+/// <summary>A branch of a repository and how far it has been indexed.</summary>
+public sealed class IndexedBranch
+{
+    public Guid Id { get; set; }
+    public Guid RepositoryId { get; set; }
+    public Repository? Repository { get; set; }
+    public required string BranchName { get; set; }
+    public bool IsDefault { get; set; }
+    public BranchIndexStatus Status { get; set; } = BranchIndexStatus.NotIndexed;
+    public string? LastIndexedCommit { get; set; }
+    public DateTimeOffset? LastIndexedAt { get; set; }
+    public int FileCount { get; set; }
+    public int ChunkCount { get; set; }
+    public string? EmbeddingModel { get; set; }
+    public int? EmbeddingDimensions { get; set; }
+    public string? LastError { get; set; }
+}
+
+/// <summary>A unit of indexing work. The table doubles as the job queue.</summary>
+public sealed class IndexJob
+{
+    public Guid Id { get; set; }
+    public Guid IndexedBranchId { get; set; }
+    public IndexedBranch? IndexedBranch { get; set; }
+    public IndexJobType Type { get; set; }
+    public IndexJobState State { get; set; } = IndexJobState.Queued;
+    public int Attempts { get; set; }
+    public int MaxAttempts { get; set; } = 3;
+    public string? TargetCommit { get; set; }
+    public string? Error { get; set; }
+    public string? LockedBy { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset AvailableAt { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? FinishedAt { get; set; }
+}
+
+public sealed class Conversation
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+
+    /// <summary>Azure DevOps user id of the owner.</summary>
+    public required string UserId { get; set; }
+    public required string Title { get; set; }
+
+    /// <summary>The repositories and branches this conversation searches.</summary>
+    public List<ConversationTarget> Targets { get; set; } = [];
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public List<Message> Messages { get; set; } = [];
+}
+
+public sealed class ConversationTarget
+{
+    public Guid RepositoryId { get; set; }
+    public required string Branch { get; set; }
+}
+
+public sealed class Message
+{
+    public Guid Id { get; set; }
+    public Guid ConversationId { get; set; }
+    public MessageRole Role { get; set; }
+    public required string Content { get; set; }
+    public string? Model { get; set; }
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public List<Citation> Citations { get; set; } = [];
+}
+
+/// <summary>A source an answer used, shown as [n] in the answer and linked to the file in Azure DevOps.</summary>
+public sealed class Citation
+{
+    public Guid Id { get; set; }
+    public Guid MessageId { get; set; }
+    public int Number { get; set; }
+    public Guid RepositoryId { get; set; }
+    public required string Branch { get; set; }
+    public required string Path { get; set; }
+    public int StartLine { get; set; }
+    public int EndLine { get; set; }
+    public double Score { get; set; }
+}
