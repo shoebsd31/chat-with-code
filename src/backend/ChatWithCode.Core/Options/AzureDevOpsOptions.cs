@@ -27,6 +27,12 @@ public sealed class AzureDevOpsOptions
     /// </summary>
     public ServicePrincipalOptions ServicePrincipal { get; set; } = new();
 
+    /// <summary>
+    /// Read repositories as the app's managed identity instead of a service principal secret
+    /// (in Azure). The identity must be added to the organization with access to the projects.
+    /// </summary>
+    public bool UseManagedIdentity { get; set; }
+
     public Uri OrganizationUrl => new($"https://dev.azure.com/{Organization}/");
 }
 

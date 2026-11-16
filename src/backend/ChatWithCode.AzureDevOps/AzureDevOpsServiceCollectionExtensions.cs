@@ -2,6 +2,7 @@ using Azure.Core;
 using Azure.Identity;
 using ChatWithCode.Core.Abstractions;
 using ChatWithCode.Core.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,15 @@ public static class AzureDevOpsServiceCollectionExtensions
         services.AddSingleton<TokenCredential>(sp =>
         {
             var options = sp.GetRequiredService<IOptions<AzureDevOpsOptions>>().Value;
+            if (options.UseManagedIdentity)
+            {
+                // In Azure: the app's managed identity, added to the Azure DevOps organization.
+                var clientId = sp.GetRequiredService<IConfiguration>()["AZURE_CLIENT_ID"];
+                return string.IsNullOrWhiteSpace(clientId)
+                    ? new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned)
+                    : new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(clientId));
+            }
+
             var principal = options.ServicePrincipal;
             if (!principal.IsConfigured)
             {
@@ -55,8 +65,9 @@ public static class AzureDevOpsServiceCollectionExtensions
     private sealed class MissingServicePrincipalCredential : TokenCredential
     {
         private const string Message =
-            "No service principal is configured for reading Azure DevOps repositories. Set AzureDevOps:ServicePrincipal " +
-            "TenantId, ClientId and ClientSecret (ADO_SP_TENANT_ID, ADO_SP_CLIENT_ID, ADO_SP_CLIENT_SECRET in .env).";
+            "No identity is configured for reading Azure DevOps repositories. Set AzureDevOps:ServicePrincipal TenantId, " +
+            "ClientId and ClientSecret (ADO_SP_TENANT_ID, ADO_SP_CLIENT_ID, ADO_SP_CLIENT_SECRET in .env), or in Azure set " +
+            "AzureDevOps:UseManagedIdentity to true.";
 
         public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
             throw new AdoAccessException(Message);

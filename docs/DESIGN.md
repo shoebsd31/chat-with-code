@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–6 built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–6 and 8 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -304,7 +304,7 @@ README.md                           setup guide
 | 5 | Azure AI Search | Second vector store: index created automatically, hybrid search, settings form, clean-up of the old store when switching |
 | 6 | Auto re-index | "Code pushed" service hook endpoint (basic auth, set up by admins with guided steps), scheduled checks (0 = once at start, configurable), last-notification status |
 | 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
-| 8 | Azure Container Apps | Bicep template: Container Apps (API + worker), Azure Database for PostgreSQL Flexible Server with pgvector, encryption key ring in Blob Storage protected by Key Vault, managed identity for Azure OpenAI, HTTPS ingress |
+| 8 | Azure Container Apps | `infra/main.bicep` + `deploy-azure.yml`: Container Apps (API with public HTTPS + worker), one user-assigned managed identity for PostgreSQL (Entra-only), Key Vault, Storage (key ring), ACR, Azure DevOps and Azure OpenAI / AI Search; images built with `az acr build`; GitHub OIDC, no GitHub secrets; Key Vault holds the only two secrets |
 
 ## 6. Testing limits in this environment
 

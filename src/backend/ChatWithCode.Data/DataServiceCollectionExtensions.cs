@@ -1,3 +1,4 @@
+using Azure.Core;
 using ChatWithCode.Core.Abstractions;
 using ChatWithCode.Core.Options;
 using ChatWithCode.Data.Queue;
@@ -26,16 +27,36 @@ public static class DataServiceCollectionExtensions
                 "Set it in appsettings.json or the ConnectionStrings__Metadata environment variable.");
         }
 
-        services.AddDbContext<ChatWithCodeDbContext>(o => ConfigureDb(o, connectionString));
+        // In Azure, sign in to PostgreSQL with the managed identity (Entra) instead of a password:
+        // the access token is the password, and it's renewed before it expires.
+        var useManagedIdentity = configuration.GetValue("Database:UseManagedIdentity", false);
+        var credential = useManagedIdentity ? ManagedIdentity.Credential(configuration) : null;
+        services.AddDbContext<ChatWithCodeDbContext>(o => ConfigureDb(o, connectionString, configureDataSource: credential is null ? null : ds =>
+            ds.UsePeriodicPasswordProvider(
+                async (_, ct) => (await credential.GetTokenAsync(new TokenRequestContext([PostgresScope]), ct)).Token,
+                TimeSpan.FromMinutes(50),
+                TimeSpan.FromSeconds(10))));
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IndexJobQueue>();
         services.AddScoped<DatabaseInitializer>();
 
         // The API and the worker share one key ring (a mounted volume), so either can decrypt API keys.
+        // In Azure the key ring lives in a blob and is encrypted with a Key Vault key, so every replica shares it.
         var security = configuration.GetSection(SecurityOptions.SectionName).Get<SecurityOptions>() ?? new SecurityOptions();
-        services.AddDataProtection()
-            .SetApplicationName("ChatWithCode")
-            .PersistKeysToFileSystem(new DirectoryInfo(security.DataProtectionKeysPath));
+        var dataProtection = services.AddDataProtection().SetApplicationName("ChatWithCode");
+        if (security.DataProtectionBlobUri is { } blobUri)
+        {
+            var azure = ManagedIdentity.Credential(configuration);
+            dataProtection.PersistKeysToAzureBlobStorage(blobUri, azure);
+            if (security.DataProtectionKeyVaultKeyId is { } keyId)
+            {
+                dataProtection.ProtectKeysWithAzureKeyVault(keyId, azure);
+            }
+        }
+        else
+        {
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(security.DataProtectionKeysPath));
+        }
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
 
         services.AddOptions<AzureOpenAIBootstrapOptions>().Bind(configuration.GetSection(AzureOpenAIBootstrapOptions.SectionName));
@@ -45,12 +66,24 @@ public static class DataServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>Entra token scope for Azure Database for PostgreSQL.</summary>
+    public const string PostgresScope = "https://ossrdbms-aad.database.windows.net/.default";
+
     /// <summary>Shared database configuration (also used by tests and the design-time factory).</summary>
-    public static DbContextOptionsBuilder ConfigureDb(DbContextOptionsBuilder options, string connectionString, bool retryOnFailure = true) =>
+    public static DbContextOptionsBuilder ConfigureDb(
+        DbContextOptionsBuilder options,
+        string connectionString,
+        bool retryOnFailure = true,
+        Action<Npgsql.NpgsqlDataSourceBuilder>? configureDataSource = null) =>
         options
             .UseNpgsql(connectionString, npgsql =>
             {
                 npgsql.UseVector();
+                if (configureDataSource is not null)
+                {
+                    npgsql.ConfigureDataSource(configureDataSource);
+                }
+
                 if (retryOnFailure)
                 {
                     npgsql.EnableRetryOnFailure(5);

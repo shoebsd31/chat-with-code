@@ -6,13 +6,13 @@ your indexed repositories and link to the exact files and lines they used.
 
 Everything runs on infrastructure you host. No GitHub Copilot or Claude is involved.
 
-> **Status: phase 6 of 8 done.** The backend indexes repositories and answers questions about
+> **Status: phases 1–6 and 8 done.** The backend indexes repositories and answers questions about
 > them. The Azure DevOps extension adds **Repos > Chat with code** (streamed answers with links to
 > the exact lines, diagrams, saved conversations) and settings pages where admins choose the
 > Azure OpenAI deployments and which repositories and branches are indexed. GitHub Actions build
 > and publish the extension. The index lives in PostgreSQL (pgvector) or Azure AI Search.
 > New commits are indexed automatically (push notifications and/or scheduled checks).
-> Next: hardening and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
+> Deploys to Azure Container Apps with no secrets in GitHub. Next: hardening (phase 7). See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
 
 ## Before you start
 
@@ -38,7 +38,74 @@ The backend reads repositories as a Microsoft Entra application. No personal tok
    restricts access, open **Project settings > Repositories > (repository) > Security** and
    allow **Read** for the app.
 
-## Run the backend
+## Deploy to Azure Container Apps
+
+The recommended way to run the backend in production. `infra/main.bicep` creates, in one
+resource group:
+
+| Resource | Purpose |
+|---|---|
+| Container Apps environment with **api** (public HTTPS) and **worker** | The backend |
+| User-assigned **managed identity** | Signs in to everything below, plus Azure DevOps and Azure OpenAI. No passwords or keys in configuration |
+| **Azure Database for PostgreSQL** (Flexible Server) | Settings, index (pgvector), queue, chat history. Entra sign-in only, no password |
+| **Key Vault** | The extension secret and webhook password, and the key that encrypts stored API keys |
+| **Storage account** | The encryption key ring, shared by all replicas |
+| **Container registry** | The images, built in Azure by the workflow |
+
+`.env` isn't used in Azure, and GitHub holds no secrets: the workflow signs in with GitHub's OIDC
+token, and the apps read their two secrets from Key Vault.
+
+**One-time setup**
+
+1. **Create a deployment app.** In the Azure portal: **Microsoft Entra ID > App registrations > New
+   registration** (e.g. `chat-with-code-deploy`). Add a federated credential: **Certificates &
+   secrets > Federated credentials > GitHub Actions deploying Azure resources**, with your
+   repository, entity type **Environment**, name `azure`.
+2. **Give it rights.** On the subscription (or a resource group you created for this), assign the app
+   **Owner**, or **Contributor** plus **Role Based Access Control Administrator**. The template
+   creates role assignments for the app identity.
+3. **Create the GitHub environment** `azure` (**Settings > Environments**) with these variables:
+
+   | Variable | Required | Value |
+   |---|---|---|
+   | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | Yes | The deployment app and where to deploy |
+   | `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION` | Yes | e.g. `chat-with-code`, `westeurope` |
+   | `ADO_ORGANIZATION` | Yes | The part after `https://dev.azure.com/` |
+   | `CHAT_ADMINS` | Recommended | Sign-in emails of admins, comma-separated |
+   | `EXTENSION_ORIGIN` | Recommended | `https://<publisher>.gallerycdn.vsassets.io` |
+   | `NAME_PREFIX` | No | Prefix for resource names (default `chatcode`) |
+   | `POLL_INTERVAL_MINUTES` | No | Check for new commits every N minutes (default 5; 0 = once at start) |
+   | `AZURE_OPENAI_RESOURCE_ID` | No | Resource id of your Azure OpenAI resource: the app identity gets **Cognitive Services OpenAI User** on it |
+   | `AZURE_SEARCH_RESOURCE_ID` | No | Resource id of an Azure AI Search service, if you use it: the identity gets the roles it needs |
+   | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_CHAT_DEPLOYMENT`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | No | Starting organization defaults (you can also enter them in Azure DevOps) |
+
+4. **Run "Deploy to Azure"** from the Actions tab. It creates the infrastructure, builds the
+   images in Azure, creates any missing Key Vault secrets with random values, deploys the apps,
+   and waits until the API is healthy. The run summary shows the **service address** and the
+   **app identity**.
+5. **Let the app identity read your repositories.** In Azure DevOps: **Organization settings >
+   Users > Add users**, search for the identity's name (e.g. `chatcode-id`), give it **Basic**
+   access and add it to the projects to index.
+6. **Package the extension** with the service address (`--backend-url`, or the publish workflow's
+   `CWC_BACKEND_URL`), publish it, then put its secret into Key Vault and restart the apps. The
+   exact commands are in the run summary.
+7. In **Organization settings > Chat with code**, choose **Managed identity** under Sign-in, enter
+   your Azure OpenAI endpoint and deployments, and **Test saved settings**.
+
+To deploy a new version, run the workflow again or push a tag like `backend-v1.1.0`. Database
+migrations run automatically when the API starts.
+
+Notes:
+- The API has public HTTPS ingress, so Azure DevOps push notifications can reach it. The
+  service hook password is the `webhook-password` secret in Key Vault (username `azdo-hooks`).
+- PostgreSQL accepts connections from Azure services and only Entra sign-in. Private networking
+  (VNet integration, private endpoints) can be added later.
+- Key Vault has purge protection: after deleting the resource group, a Key Vault with the same
+  name can't be created for 30 days. Use another `NAME_PREFIX` if you redeploy from scratch.
+
+## Run the backend with Docker Compose
+
+For local use, testing, or a single server. (For production in Azure, see the previous section.)
 
 ```bash
 cd deploy
@@ -315,7 +382,11 @@ nesting (for example `AzureDevOps__Organization`).
 | Setting | Required | Default | Purpose |
 |---|---|---|---|
 | `AzureDevOps:Organization` | Yes | — | Organization name only, not the URL |
-| `AzureDevOps:ServicePrincipal:TenantId` / `ClientId` / `ClientSecret` | Yes, to index | — | How the backend reads repositories |
+| `AzureDevOps:ServicePrincipal:TenantId` / `ClientId` / `ClientSecret` | Yes, to index (Compose) | — | How the backend reads repositories |
+| `AzureDevOps:UseManagedIdentity` | In Azure | false | Read repositories as the app's managed identity instead |
+| `Database:UseManagedIdentity` | In Azure | false | Sign in to PostgreSQL with Entra (the connection string has no password) |
+| `Security:DataProtectionBlobUri` / `DataProtectionKeyVaultKeyId` | In Azure | — | Keep the encryption key ring in a blob, encrypted with a Key Vault key |
+| `AZURE_CLIENT_ID` | In Azure | — | Which user-assigned managed identity to use |
 | `ConnectionStrings:Metadata` | Yes | set by compose | PostgreSQL connection |
 | `AzureOpenAI:Endpoint`, `ApiKey`, `UseManagedIdentity`, `EmbeddingDeployment`, `ChatDeployment`, `EmbeddingDimensions` | First start | dimensions 1536 | Starting organization defaults (saved once) |
 | `VectorStore:Kind`, `AzureSearchEndpoint`, `AzureSearchIndexName`, `AzureSearchApiKey` | First start | `PgVector` | Starting vector store (saved once, then managed in Azure DevOps) |
@@ -359,6 +430,7 @@ dotnet ef migrations add <Name> -p ChatWithCode.Data -o Migrations
 
 ```
 docs/DESIGN.md                        design and roadmap
+infra/                                Azure Container Apps deployment (Bicep)
 deploy/                               docker compose + .env.example
 src/backend/
   ChatWithCode.Api/                   HTTP API: sign-in checks, chat (streaming), conversations
