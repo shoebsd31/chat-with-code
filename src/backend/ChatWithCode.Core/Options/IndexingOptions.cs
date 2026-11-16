@@ -17,8 +17,12 @@ public sealed class IndexingOptions
     /// </summary>
     public bool PollingEnabled { get; set; } = true;
 
-    [Range(1, 1_440)]
-    public int PollIntervalMinutes { get; set; } = 5;
+    /// <summary>
+    /// Minutes between checks. 0 checks once when the worker starts and then stops
+    /// (handy while testing); 5 suits production.
+    /// </summary>
+    [Range(0, 1_440)]
+    public int PollIntervalMinutes { get; set; }
 
     /// <summary>How often the worker looks for queued jobs when the queue is empty.</summary>
     [Range(1, 300)]

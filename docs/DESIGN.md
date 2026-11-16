@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–5 built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–6 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -302,7 +302,7 @@ README.md                           setup guide
 | 4a | Extension: chat | "Chat with code" hub (repo picker, streaming chat, sources, Mermaid, history), connection test page, packaging, GitHub Actions publishing |
 | 4b | Extension: admin settings | Organization and project model settings; which repositories and branches to index; re-index button |
 | 5 | Azure AI Search | Second vector store: index created automatically, hybrid search, settings form, clean-up of the old store when switching |
-| 6 | Auto re-index | Service hook receiver, polling fallback, branch selection, index status UI |
+| 6 | Auto re-index | "Code pushed" service hook endpoint (basic auth, set up by admins with guided steps), scheduled checks (0 = once at start, configurable), last-notification status |
 | 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
 | 8 | Azure Container Apps | Bicep template: Container Apps (API + worker), Azure Database for PostgreSQL Flexible Server with pgvector, encryption key ring in Blob Storage protected by Key Vault, managed identity for Azure OpenAI, HTTPS ingress |
 

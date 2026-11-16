@@ -1,5 +1,8 @@
 using ChatWithCode.Api.Auth;
 using ChatWithCode.Api.Chat;
+using ChatWithCode.Api.Webhooks;
+using ChatWithCode.Core.Options;
+using Microsoft.Extensions.Options;
 
 namespace ChatWithCode.Api.Admin;
 
@@ -43,6 +46,16 @@ public static class AdminEndpoints
 
         admin.MapPost("/settings/test", (TestSettingsRequest request, HttpContext http, AdminService service, CancellationToken ct) =>
             service.TestSettingsAsync(http.GetUserAccess(), request.ProjectId, ct));
+
+        // Admins only: the username is shown so they can copy it into the service hook.
+        admin.MapGet("/push-notifications", (HttpContext http, IOptions<SecurityOptions> security, IOptions<IndexingOptions> indexing) =>
+        {
+            var access = http.GetUserAccess();
+            var s = security.Value;
+            var configured = !string.IsNullOrWhiteSpace(s.WebhookUsername) && !string.IsNullOrWhiteSpace(s.WebhookPassword);
+            return new PushSetupDto(configured, access.IsAdmin && configured ? s.WebhookUsername : null, PushWebhookEndpoint.Path,
+                indexing.Value.PollingEnabled, indexing.Value.PollIntervalMinutes);
+        });
 
         admin.MapGet("/projects/{projectId:guid}/repositories", (Guid projectId, HttpContext http, AdminService service, CancellationToken ct) =>
             service.GetRepositoriesAsync(http.GetUserAccess(), projectId, ct));

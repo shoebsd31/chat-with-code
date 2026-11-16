@@ -59,6 +59,7 @@ if (isCommand)
 
 builder.Services.AddHostedService<IndexJobWorker>();
 builder.Services.AddHostedService<ConversationRetentionService>();
+builder.Services.AddHostedService<BranchPoller>();
 
 // The API applies database migrations; the worker starts after it (see deploy/docker-compose.yml).
 await builder.Build().RunAsync();

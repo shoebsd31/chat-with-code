@@ -102,17 +102,17 @@ let projectSettings: ModelSettings = { ...Object.fromEntries(Object.keys(orgSett
 
 let adminRepos: AdminRepository[] = [
   {
-    id: "r1", name: "web-app", defaultBranch: "refs/heads/main", indexed: true,
+    id: "r1", name: "web-app", defaultBranch: "refs/heads/main", indexed: true, lastPushNotificationAt: new Date(Date.now() - 180_000).toISOString(),
     branches: [
       { name: "refs/heads/main", isDefault: true, status: "Ready", progressDone: 412, progressTotal: 412, fileCount: 412, chunkCount: 2380, lastIndexedAt: new Date(Date.now() - 600_000).toISOString(), lastError: null },
       { name: "refs/heads/release/2.0", isDefault: false, status: "Indexing", progressDone: 128, progressTotal: 398, fileCount: 0, chunkCount: 0, lastIndexedAt: null, lastError: null },
     ],
   },
   {
-    id: "r2", name: "payments-service", defaultBranch: "refs/heads/main", indexed: true,
+    id: "r2", name: "payments-service", defaultBranch: "refs/heads/main", indexed: true, lastPushNotificationAt: null,
     branches: [{ name: "refs/heads/main", isDefault: true, status: "Failed", progressDone: 0, progressTotal: 0, fileCount: 0, chunkCount: 0, lastIndexedAt: null, lastError: "Azure OpenAI refused the request. Check the API key." }],
   },
-  { id: "r4", name: "infrastructure", defaultBranch: "refs/heads/main", indexed: false, branches: [] },
+  { id: "r4", name: "infrastructure", defaultBranch: "refs/heads/main", indexed: false, branches: [], lastPushNotificationAt: null },
 ];
 
 const apply = (current: ModelSettings, v: SaveSettings): ModelSettings => ({
@@ -164,6 +164,7 @@ export function createMockApi(): Api {
         );
         return adminRepos.find((r) => r.id === repositoryId)!;
       },
+      pushSetup: async () => ({ webhookConfigured: true, webhookUsername: isAdmin ? "azdo-hooks" : null, webhookPath: "/api/webhooks/ado", pollingEnabled: true, pollIntervalMinutes: 0 }),
       reindex: async (repositoryId, branch) => {
         adminRepos = adminRepos.map((r) => (r.id !== repositoryId ? r : { ...r, branches: r.branches.map((b) => (b.name === branch ? { ...b, status: "Queued", lastError: null } : b)) }));
       },

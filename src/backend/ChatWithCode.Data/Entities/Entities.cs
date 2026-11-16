@@ -54,6 +54,9 @@ public sealed class Repository
     public bool IsEnabled { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>When Azure DevOps last sent a push notification for this repository.</summary>
+    public DateTimeOffset? LastPushNotificationAt { get; set; }
+
     public List<IndexedBranch> Branches { get; set; } = [];
 }
 

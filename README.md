@@ -6,12 +6,13 @@ your indexed repositories and link to the exact files and lines they used.
 
 Everything runs on infrastructure you host. No GitHub Copilot or Claude is involved.
 
-> **Status: phase 5 of 8 done.** The backend indexes repositories and answers questions about
+> **Status: phase 6 of 8 done.** The backend indexes repositories and answers questions about
 > them. The Azure DevOps extension adds **Repos > Chat with code** (streamed answers with links to
 > the exact lines, diagrams, saved conversations) and settings pages where admins choose the
 > Azure OpenAI deployments and which repositories and branches are indexed. GitHub Actions build
 > and publish the extension. The index lives in PostgreSQL (pgvector) or Azure AI Search.
-> Next: automatic re-indexing on push, hardening, and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
+> New commits are indexed automatically (push notifications and/or scheduled checks).
+> Next: hardening and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
 
 ## Before you start
 
@@ -107,6 +108,20 @@ docker compose run --rm worker status
 Repository             Branch  Status          Files  Chunks  Last indexed          Commit
 Fabrikam/web-app       main    Indexing 64/412 0      0       never                 -
 ```
+
+### Keeping the index up to date
+
+New commits are picked up two ways. Both feed the same queue, so a push seen both ways is
+indexed once.
+
+| Way | How | Needs |
+|---|---|---|
+| **Scheduled checks** | The worker compares each indexed branch's latest commit with the last indexed one | Nothing. `INDEX_POLL_MINUTES=0` (the current default) checks once when the worker starts; set it to `5` for production |
+| **Push notifications** | Azure DevOps calls the service when code is pushed, so changes are indexed within seconds | The service reachable from the internet (Azure DevOps sends them from its own servers), plus `WEBHOOK_USERNAME` and `WEBHOOK_PASSWORD`. Then follow the steps in **Project settings > Chat with code > Keeping the index up to date** to add a **Code pushed** service hook per project |
+
+The same page shows when each repository last sent a push notification, so you can tell whether
+they arrive. In Azure Container Apps with external ingress, push notifications work; with
+internal-only ingress or IP restrictions, rely on scheduled checks.
 
 ### Where the index is kept
 
@@ -258,6 +273,8 @@ needs two headers:
 | `GET /api/admin/projects/{id}/repositories` | A project's repositories with indexed branches and status |
 | `GET/PUT /api/admin/repositories/{id}/branches` | List a repository's branches; set which are indexed (admins) |
 | `POST /api/admin/repositories/{id}/reindex` | Queue re-indexing of a branch (admins) |
+| `GET /api/admin/push-notifications` | How new commits are detected (polling interval, whether push notifications are set up) |
+| `POST /api/webhooks/ado` | Azure DevOps "Code pushed" service hook (basic auth, not the extension token) |
 
 `POST /api/chat` body: `{ "question": "...", "targets": [{ "repositoryId": "<ADO repo id>", "branch": "refs/heads/main" }] }`.
 To continue a conversation, send `conversationId` instead of (or as well as) `targets`.
@@ -304,7 +321,8 @@ nesting (for example `AzureDevOps__Organization`).
 | `VectorStore:Kind`, `AzureSearchEndpoint`, `AzureSearchIndexName`, `AzureSearchApiKey` | First start | `PgVector` | Starting vector store (saved once, then managed in Azure DevOps) |
 | `Indexing:MaxFileSizeKb` | No | 500 | Larger files are skipped |
 | `Indexing:ExcludeGlobs` | No | — | Extra skip rules for every repository (`.gitignore` syntax) |
-| `Indexing:PollingEnabled` / `PollIntervalMinutes` | No | true / 5 | Check for new commits when push notifications can't reach the backend (phase 6) |
+| `Indexing:PollingEnabled` / `PollIntervalMinutes` | No | true / 0 | Check branches for new commits; 0 = once at worker start, otherwise every N minutes |
+| `Security:WebhookUsername` / `WebhookPassword` | For push notifications | — | Basic-auth credentials Azure DevOps service hooks use (`WEBHOOK_USERNAME`, `WEBHOOK_PASSWORD`) |
 | `AzureDevOps:ExtensionSecret` | Yes, to chat | — | Validates calls from the extension |
 | `Chat:RetentionDays` | No | 30 | Delete conversations with no new messages for this long |
 | `Chat:RequestsPerMinute` | No | 20 | Questions per user per minute |

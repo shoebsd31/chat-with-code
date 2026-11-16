@@ -187,7 +187,7 @@ public sealed class AdminService(
                 .Select(b => new AdminBranchDto(b.BranchName, b.BranchName == r.DefaultBranch, b.Status.ToString(), b.ProgressDone, b.ProgressTotal,
                     b.FileCount, b.ChunkCount, b.LastIndexedAt, b.LastError))
                 .ToList();
-            return new AdminRepositoryDto(r.Id, r.Name, r.DefaultBranch, branches.Count > 0, branches);
+            return new AdminRepositoryDto(r.Id, r.Name, r.DefaultBranch, branches.Count > 0, branches, repo?.LastPushNotificationAt);
         }).ToList();
     }
 

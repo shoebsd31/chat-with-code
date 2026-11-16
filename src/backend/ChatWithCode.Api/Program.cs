@@ -6,6 +6,7 @@ using ChatWithCode.Api;
 using ChatWithCode.Api.Admin;
 using ChatWithCode.Api.Auth;
 using ChatWithCode.Api.Chat;
+using ChatWithCode.Api.Webhooks;
 using ChatWithCode.AzureDevOps;
 using ChatWithCode.AzureOpenAI;
 using ChatWithCode.Core.Abstractions;
@@ -127,6 +128,7 @@ app.MapGet("/api/info", (IOptions<AzureDevOpsOptions> ado) => new ServiceInfo(
 
 app.MapChatEndpoints();
 app.MapAdminEndpoints();
+app.MapPushWebhook();
 
 await app.RunAsync();
 return 0;

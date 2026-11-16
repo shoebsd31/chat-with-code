@@ -63,7 +63,14 @@ public sealed record AdminBranchDto(
     string? LastError);
 
 /// <param name="Indexed">Whether any branch of the repository is in the index.</param>
-public sealed record AdminRepositoryDto(Guid Id, string Name, string? DefaultBranch, bool Indexed, IReadOnlyList<AdminBranchDto> Branches);
+/// <param name="LastPushNotificationAt">When Azure DevOps last sent a push notification for it (null: never).</param>
+public sealed record AdminRepositoryDto(Guid Id, string Name, string? DefaultBranch, bool Indexed, IReadOnlyList<AdminBranchDto> Branches, DateTimeOffset? LastPushNotificationAt);
+
+/// <summary>How the service learns about new commits, for the setup instructions on the settings page.</summary>
+/// <param name="WebhookConfigured">WEBHOOK_USERNAME and WEBHOOK_PASSWORD are set.</param>
+/// <param name="WebhookPath">Path of the endpoint, relative to the service address.</param>
+/// <param name="PollIntervalMinutes">0 means "once at startup".</param>
+public sealed record PushSetupDto(bool WebhookConfigured, string? WebhookUsername, string WebhookPath, bool PollingEnabled, int PollIntervalMinutes);
 
 /// <summary>The branches to keep indexed. An empty list removes the repository from the index.</summary>
 public sealed record SetBranchesRequest(IReadOnlyList<string> Branches);

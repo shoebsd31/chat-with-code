@@ -12,8 +12,10 @@ namespace ChatWithCode.Tests.Infrastructure;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
+    // Every test gets its own database (and connection pool), so allow more connections than the default 100.
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:pg17")
         .WithDatabase("postgres")
+        .WithCommand("-c", "max_connections=500")
         .Build();
 
     public Task InitializeAsync() => _container.StartAsync();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Api, Me, ServiceInfo } from "../common/api";
 import { ModelSettingsCard } from "./ModelSettingsCard";
 import { RepositoriesCard } from "./RepositoriesCard";
+import { UpdatesCard } from "./UpdatesCard";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
 
@@ -22,6 +23,7 @@ export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "o
         {scope === "organization" ? "Connection and default settings for the whole organization." : `Repositories and settings for the ${host.context.projectName ?? "current"} project.`}
       </p>
       {me && projectId && <RepositoriesCard api={api} projectId={projectId} canEdit={me.isAdmin} />}
+      {me && projectId && <UpdatesCard api={api} projectId={projectId} canEdit={me.isAdmin} />}
       {me && <ModelSettingsCard api={api} projectId={projectId} projectName={host.context.projectName} />}
       <ConnectionCard host={host} api={api} onUser={setMe} />
     </div>

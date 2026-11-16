@@ -50,7 +50,7 @@ services:
       Admin__Users: ${CHAT_ADMINS:-}
       Chat__RequestsPerMinute: ${CHAT_REQUESTS_PER_MINUTE:-20}
       Indexing__PollingEnabled: ${INDEX_POLLING_ENABLED:-true}
-      Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-5}
+      Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-0}
       Security__AllowedOrigins__0: ${EXTENSION_ORIGIN:-}
       Security__WebhookUsername: ${WEBHOOK_USERNAME:-}
       Security__WebhookPassword: ${WEBHOOK_PASSWORD:-}

@@ -145,6 +145,15 @@ export interface AdminRepository {
   defaultBranch: string | null;
   indexed: boolean;
   branches: AdminBranch[];
+  lastPushNotificationAt: string | null;
+}
+
+export interface PushSetup {
+  webhookConfigured: boolean;
+  webhookUsername: string | null;
+  webhookPath: string;
+  pollingEnabled: boolean;
+  pollIntervalMinutes: number;
 }
 
 export interface AdminApi {
@@ -156,6 +165,7 @@ export interface AdminApi {
   branches(repositoryId: string): Promise<string[]>;
   setBranches(repositoryId: string, branches: string[]): Promise<AdminRepository>;
   reindex(repositoryId: string, branch: string, full: boolean): Promise<void>;
+  pushSetup(): Promise<PushSetup>;
 }
 
 export type ChatEvent =
@@ -250,6 +260,7 @@ export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: F
       repositories: (projectId) => getJson<AdminRepository[]>(`/api/admin/projects/${encodeURIComponent(projectId)}/repositories`),
       branches: (repositoryId) => getJson<string[]>(`/api/admin/repositories/${encodeURIComponent(repositoryId)}/branches`),
       setBranches: (repositoryId, branches) => sendJson("PUT", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/branches`, { branches }),
+      pushSetup: () => getJson<PushSetup>("/api/admin/push-notifications"),
       reindex: (repositoryId, branch, full) => sendJson("POST", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/reindex`, { branch, full }),
     },
     ask: async (request, onEvent, signal) => {

@@ -603,6 +603,10 @@ namespace ChatWithCode.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_enabled");
 
+                    b.Property<DateTimeOffset?>("LastPushNotificationAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_push_notification_at");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)
