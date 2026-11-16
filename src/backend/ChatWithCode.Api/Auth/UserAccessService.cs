@@ -1,13 +1,18 @@
 using System.Security.Cryptography;
 using System.Text;
 using ChatWithCode.Core.Abstractions;
+using ChatWithCode.Core.Options;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace ChatWithCode.Api.Auth;
 
 /// <summary>The signed-in user and the repositories they can read, as Azure DevOps reported them.</summary>
 public sealed record UserAccess(AdoUser User, IReadOnlyDictionary<Guid, ReadableRepository> ReadableRepositories)
 {
+    /// <summary>Listed in CHAT_ADMINS: may change settings and choose what's indexed.</summary>
+    public bool IsAdmin { get; init; }
+
     public bool CanRead(Guid adoRepositoryId) => ReadableRepositories.ContainsKey(adoRepositoryId);
 }
 
@@ -38,7 +43,7 @@ public sealed class UserAccessService(IAdoUserClient ado, IMemoryCache cache)
 }
 
 /// <summary>Runs before every user-facing endpoint: no Azure DevOps sign-in, no access.</summary>
-public sealed class RequireUserAccessFilter(UserAccessService access, ILogger<RequireUserAccessFilter> logger) : IEndpointFilter
+public sealed class RequireUserAccessFilter(UserAccessService access, IOptions<AdminOptions> admins, ILogger<RequireUserAccessFilter> logger) : IEndpointFilter
 {
     public const string HeaderName = "X-AzureDevOps-Token";
 
@@ -56,7 +61,8 @@ public sealed class RequireUserAccessFilter(UserAccessService access, ILogger<Re
 
         try
         {
-            http.Items[typeof(UserAccess)] = await access.GetAsync(token, http.RequestAborted);
+            var userAccess = await access.GetAsync(token, http.RequestAborted);
+            http.Items[typeof(UserAccess)] = userAccess with { IsAdmin = admins.Value.IsAdmin(userAccess.User.Id, userAccess.User.Email) };
         }
         catch (AdoAccessException ex)
         {

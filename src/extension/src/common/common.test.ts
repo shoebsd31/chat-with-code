@@ -3,6 +3,7 @@ import { ApiError, createApi, type Citation, type ChatEvent } from "./api";
 import type { Host } from "./host";
 import { renderAnswer } from "./markdown";
 import { SseParser } from "./sse";
+import { timeAgo } from "../settings/RepositoriesCard";
 
 const host: Host = {
   context: { organization: "contoso", userName: "Ada" },
@@ -106,4 +107,15 @@ describe("createApi", () => {
     expect(events.map((e) => e.type)).toEqual(["conversation", "delta", "done"]);
     expect(events[1]).toEqual({ type: "delta", text: "Hi" });
   });
+});
+
+describe("timeAgo", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  it.each([
+    ["2026-11-16T11:59:50Z", "just now"],
+    ["2026-11-16T11:50:00Z", "10 min ago"],
+    ["2026-11-16T09:00:00Z", "3 h ago"],
+    ["2026-11-15T12:00:00Z", "1 day ago"],
+    ["2026-11-13T12:00:00Z", "3 days ago"],
+  ])("%s is %s", (iso, expected) => expect(timeAgo(iso, now)).toBe(expected));
 });

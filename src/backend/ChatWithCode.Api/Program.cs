@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 using ChatWithCode.Api;
+using ChatWithCode.Api.Admin;
 using ChatWithCode.Api.Auth;
 using ChatWithCode.Api.Chat;
 using ChatWithCode.AzureDevOps;
@@ -34,6 +35,8 @@ builder.Services.AddOptions<IndexingOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<SecurityOptions>()
     .Bind(builder.Configuration.GetSection(SecurityOptions.SectionName));
+builder.Services.AddOptions<AdminOptions>()
+    .Bind(builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.AddOptions<ChatOptions>()
     .Bind(builder.Configuration.GetSection(ChatOptions.SectionName))
     .ValidateDataAnnotations()
@@ -49,6 +52,7 @@ builder.Services.AddSingleton<ITokenCounter, Cl100kTokenCounter>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<UserAccessService>();
 builder.Services.AddScoped<ChatService>();
+builder.Services.AddScoped<AdminService>();
 builder.Services.AddExtensionAuthentication(builder.Configuration);
 
 // Per-user limit on chat requests (each one costs model tokens).
@@ -120,6 +124,7 @@ app.MapGet("/api/info", (IOptions<AzureDevOpsOptions> ado) => new ServiceInfo(
     .WithName("GetInfo");
 
 app.MapChatEndpoints();
+app.MapAdminEndpoints();
 
 await app.RunAsync();
 return 0;

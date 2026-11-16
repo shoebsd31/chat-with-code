@@ -76,6 +76,86 @@ export interface ServiceInfo {
 export interface Me {
   id: string;
   displayName: string;
+  isAdmin: boolean;
+}
+
+// ---- Admin (mirror ChatWithCode.Api/Admin/AdminContracts.cs) ----
+
+export interface SecretState {
+  isSet: boolean;
+  hint: string | null;
+}
+
+export interface ModelSettings {
+  azureOpenAIEndpoint: string | null;
+  chatDeployment: string | null;
+  embeddingDeployment: string | null;
+  embeddingDimensions: number | null;
+  useManagedIdentity: boolean | null;
+  apiKey: SecretState;
+  vectorStore: string | null;
+  azureSearchEndpoint: string | null;
+  azureSearchIndexName: string | null;
+  azureSearchApiKey: SecretState;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface SettingsResponse {
+  organization: ModelSettings;
+  project: ModelSettings | null;
+  canEdit: boolean;
+  problem: string | null;
+}
+
+/** Secrets: null keeps the stored value, "" removes it, anything else replaces it. */
+export interface SaveSettings {
+  azureOpenAIEndpoint: string | null;
+  chatDeployment: string | null;
+  embeddingDeployment: string | null;
+  embeddingDimensions: number | null;
+  useManagedIdentity: boolean | null;
+  apiKey: string | null;
+  vectorStore: string | null;
+  azureSearchEndpoint: string | null;
+  azureSearchIndexName: string | null;
+  azureSearchApiKey: string | null;
+}
+
+export interface CheckResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface AdminBranch {
+  name: string;
+  isDefault: boolean;
+  status: Branch["status"];
+  progressDone: number;
+  progressTotal: number;
+  fileCount: number;
+  chunkCount: number;
+  lastIndexedAt: string | null;
+  lastError: string | null;
+}
+
+export interface AdminRepository {
+  id: string;
+  name: string;
+  defaultBranch: string | null;
+  indexed: boolean;
+  branches: AdminBranch[];
+}
+
+export interface AdminApi {
+  settings(projectId?: string): Promise<SettingsResponse>;
+  saveSettings(values: SaveSettings, projectId?: string): Promise<{ settings: SettingsResponse; reindexQueued: number }>;
+  removeProjectSettings(projectId: string): Promise<void>;
+  testSettings(projectId?: string): Promise<{ embedding: CheckResult; chat: CheckResult }>;
+  repositories(projectId: string): Promise<AdminRepository[]>;
+  branches(repositoryId: string): Promise<string[]>;
+  setBranches(repositoryId: string, branches: string[]): Promise<AdminRepository>;
+  reindex(repositoryId: string, branch: string, full: boolean): Promise<void>;
 }
 
 export type ChatEvent =
@@ -114,6 +194,7 @@ export interface Api {
   deleteConversation(id: string): Promise<void>;
   /** Ask a question; events arrive through onEvent until the stream ends. */
   ask(request: AskRequest, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void>;
+  admin: AdminApi;
 }
 
 export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: FetchLike = (i, init) => fetch(i, init)): Api {
@@ -145,6 +226,11 @@ export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: F
   }
 
   const getJson = async <T>(path: string, anonymous = false) => (await send(path, {}, anonymous)).json() as Promise<T>;
+  const sendJson = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const response = await send(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return (response.status === 204 || response.status === 202 ? undefined : await response.json()) as T;
+  };
+  const project = (projectId?: string) => (projectId ? `/api/admin/projects/${encodeURIComponent(projectId)}/settings` : "/api/admin/settings");
 
   return {
     baseUrl: root,
@@ -155,6 +241,16 @@ export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: F
     conversation: (id) => getJson<Conversation>(`/api/conversations/${encodeURIComponent(id)}`),
     deleteConversation: async (id) => {
       await send(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    admin: {
+      settings: (projectId) => getJson<SettingsResponse>(`/api/admin/settings${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
+      saveSettings: (values, projectId) => sendJson("PUT", project(projectId), values),
+      removeProjectSettings: (projectId) => sendJson("DELETE", project(projectId)),
+      testSettings: (projectId) => sendJson("POST", "/api/admin/settings/test", { projectId: projectId ?? null }),
+      repositories: (projectId) => getJson<AdminRepository[]>(`/api/admin/projects/${encodeURIComponent(projectId)}/repositories`),
+      branches: (repositoryId) => getJson<string[]>(`/api/admin/repositories/${encodeURIComponent(repositoryId)}/branches`),
+      setBranches: (repositoryId, branches) => sendJson("PUT", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/branches`, { branches }),
+      reindex: (repositoryId, branch, full) => sendJson("POST", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/reindex`, { branch, full }),
     },
     ask: async (request, onEvent, signal) => {
       const response = await send("/api/chat", {

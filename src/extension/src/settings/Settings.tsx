@@ -1,16 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Api, Me, ServiceInfo } from "../common/api";
+import { ModelSettingsCard } from "./ModelSettingsCard";
+import { RepositoriesCard } from "./RepositoriesCard";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
 
 type Check = { state: "pending" | "ok" | "bad"; label: string; detail?: string };
 
 /**
- * Organization and project settings. Phase 4a shows the connection: the backend address built
- * into this extension and a step-by-step check of the connection. Model and repository settings
- * are added in phase 4b.
+ * Organization settings: connection check and Azure OpenAI defaults.
+ * Project settings: which repositories are indexed, project overrides, and the connection check.
+ * Everyone can look; only admins listed in CHAT_ADMINS can change anything.
  */
 export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "organization" | "project" }) {
+  const [me, setMe] = useState<Me>();
+  const projectId = scope === "project" ? host.context.projectId : undefined;
+  return (
+    <div className="settings">
+      <h1>Chat with code</h1>
+      <p>
+        {scope === "organization" ? "Connection and default settings for the whole organization." : `Repositories and settings for the ${host.context.projectName ?? "current"} project.`}
+      </p>
+      {me && projectId && <RepositoriesCard api={api} projectId={projectId} canEdit={me.isAdmin} />}
+      {me && <ModelSettingsCard api={api} projectId={projectId} projectName={host.context.projectName} />}
+      <ConnectionCard host={host} api={api} onUser={setMe} />
+    </div>
+  );
+}
+
+function ConnectionCard({ host, api, onUser }: { host: Host; api: Api; onUser(me: Me): void }) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [info, setInfo] = useState<ServiceInfo>();
   const [running, setRunning] = useState(false);
@@ -57,6 +75,7 @@ export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "o
 
     try {
       const me: Me = await api.me();
+      onUser(me);
       results[2] = { ...results[2], state: "ok" };
       results[3] = { ...results[3], state: "ok", detail: `Signed in as ${me.displayName}` };
       show();
@@ -69,7 +88,7 @@ export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "o
       }
     }
     setRunning(false);
-  }, [api, host]);
+  }, [api, host, onUser]);
 
   useEffect(() => {
     void test().finally(() => host.loaded());
@@ -77,58 +96,43 @@ export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "o
 
   const allOk = checks.length > 0 && checks.every((c) => c.state === "ok");
   return (
-    <div className="settings">
-      <h1>Chat with code</h1>
-      <p>{scope === "organization" ? "Connection and settings for the whole organization." : `Settings for the ${host.context.projectName ?? "current"} project.`}</p>
-
-      <section className="card" aria-labelledby="connection-heading">
-        <h2 id="connection-heading">Connection</h2>
-        <p>The service address is built into this extension when it's packaged, so it can't be changed from Azure DevOps.</p>
-        <dl className="kv">
-          <dt>Service address</dt>
-          <dd className="mono">{api.baseUrl || "Not set (package the extension with --backend-url)"}</dd>
-          <dt>Organization</dt>
-          <dd>{host.context.organization}</dd>
-          {info && (
-            <>
-              <dt>Service version</dt>
-              <dd>{info.version}</dd>
-            </>
-          )}
-        </dl>
-        <button type="button" className="btn" onClick={() => void test()} disabled={running}>
-          <Icon name="refresh" /> {running ? "Testing…" : "Test connection"}
-        </button>
-        <ul className="checks" aria-live="polite">
-          {checks.map((c) => (
-            <li key={c.label}>
-              <span className={`dot ${c.state}`} aria-hidden="true" />
-              <div>
-                <div>
-                  {c.label}
-                  <span className="sr-only">: {c.state === "ok" ? "passed" : c.state === "bad" ? "failed" : "pending"}</span>
-                </div>
-                {c.detail && <div className="muted">{c.detail}</div>}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {allOk && (
-          <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-            Everything works. People can use Chat with code under Repos.
-          </p>
+    <section className="card" aria-labelledby="connection-heading">
+      <h2 id="connection-heading">Connection</h2>
+      <p>The service address is built into this extension when it's packaged, so it can't be changed from Azure DevOps.</p>
+      <dl className="kv">
+        <dt>Service address</dt>
+        <dd className="mono">{api.baseUrl || "Not set (package the extension with --backend-url)"}</dd>
+        <dt>Organization</dt>
+        <dd>{host.context.organization}</dd>
+        {info && (
+          <>
+            <dt>Service version</dt>
+            <dd>{info.version}</dd>
+          </>
         )}
-      </section>
-
-      <section className="card">
-        <h2>Models and repositories</h2>
-        <p style={{ marginBottom: 0 }}>
-          {scope === "organization"
-            ? "Azure OpenAI and vector store settings for the organization will be managed here."
-            : "Choosing which repositories and branches to index, and project-specific model settings, will be managed here."}{" "}
-          Until then, they're set in the service's <span className="mono">.env</span> file and with the <span className="mono">index</span> command (see the README).
+      </dl>
+      <button type="button" className="btn" onClick={() => void test()} disabled={running}>
+        <Icon name="refresh" /> {running ? "Testing…" : "Test connection"}
+      </button>
+      <ul className="checks" aria-live="polite">
+        {checks.map((c) => (
+          <li key={c.label}>
+            <span className={`dot ${c.state}`} aria-hidden="true" />
+            <div>
+              <div>
+                {c.label}
+                <span className="sr-only">: {c.state === "ok" ? "passed" : c.state === "bad" ? "failed" : "pending"}</span>
+              </div>
+              {c.detail && <div className="muted">{c.detail}</div>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {allOk && (
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          Everything works. People can use Chat with code under Repos.
         </p>
-      </section>
-    </div>
+      )}
+    </section>
   );
 }

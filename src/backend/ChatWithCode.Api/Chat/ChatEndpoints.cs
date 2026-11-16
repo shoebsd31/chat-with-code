@@ -19,8 +19,8 @@ public static class ChatEndpoints
 
         api.MapGet("/me", (HttpContext http) =>
         {
-            var user = http.GetUserAccess().User;
-            return new MeDto(user.Id, user.DisplayName);
+            var access = http.GetUserAccess();
+            return new MeDto(access.User.Id, access.User.DisplayName, access.IsAdmin);
         });
 
         // Indexed repositories this user can read, for the repository picker.

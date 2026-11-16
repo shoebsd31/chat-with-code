@@ -6,10 +6,12 @@ your indexed repositories and link to the exact files and lines they used.
 
 Everything runs on infrastructure you host. No GitHub Copilot or Claude is involved.
 
-> **Status: phase 4a of 8.** The backend indexes repositories and answers questions about them,
-> and the Azure DevOps extension adds **Repos > Chat with code**: streamed answers with links to
-> the exact lines, diagrams and saved conversations. GitHub Actions build and publish the
-> extension. Admin settings in Azure DevOps (models, which repositories to index) come next. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
+> **Status: phase 4 of 8 done.** The backend indexes repositories and answers questions about
+> them. The Azure DevOps extension adds **Repos > Chat with code** (streamed answers with links to
+> the exact lines, diagrams, saved conversations) and settings pages where admins choose the
+> Azure OpenAI deployments and which repositories and branches are indexed. GitHub Actions build
+> and publish the extension. Next: Azure AI Search, automatic re-indexing on push, hardening,
+> and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
 
 ## Before you start
 
@@ -53,11 +55,12 @@ Edit `.env`:
 | `AZURE_OPENAI_API_KEY` | Key from the Azure OpenAI resource (or set `AZURE_OPENAI_USE_MANAGED_IDENTITY=true`) |
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Your embedding deployment's name |
 | `AZURE_OPENAI_CHAT_DEPLOYMENT` | Your chat deployment's name (default `gpt-6-luna`) |
-| `ADO_EXTENSION_SECRET` | The extension's secret (phase 4; see [Chat API](#chat-api)) |
+| `ADO_EXTENSION_SECRET` | The extension's secret (see [Package the extension](#package-the-extension)) |
+| `CHAT_ADMINS` | Sign-in emails of the people who may change settings, comma-separated |
 
 The Azure OpenAI values are saved as the organization defaults the first time the backend
-starts. After that they're managed in Azure DevOps (from phase 4), and changing `.env` has
-no effect on them.
+starts. After that they're managed in **Organization settings > Chat with code**, and changing
+`.env` has no effect on them. (You can also leave them out of `.env` and enter everything there.)
 
 Start everything:
 
@@ -73,9 +76,18 @@ curl http://localhost:8080/health/ready
 
 It prints `Healthy`.
 
-### Index a repository
+### Choose what to index
 
-Until the settings pages exist in Azure DevOps (phase 4), add repositories from the command line:
+In Azure DevOps, open **Project settings > Chat with code**. Under **Repositories**, select
+**Index** (or **Change branches**) on a repository, pick branches, and **Save**. Indexing runs in
+the background and the page shows progress. **Re-index** picks up changes since the last run
+(or starts over after a failure).
+
+Only people listed in `CHAT_ADMINS` can change settings; everyone else sees them read-only.
+Admins are kept in the backend's configuration on purpose: they can't be changed from Azure
+DevOps, and checking Azure DevOps admin roles would need a high-privilege extension scope.
+
+The same can be done from the command line, which is handy for scripts:
 
 ```bash
 docker compose run --rm worker index --project "Your Project" --repo your-repo
@@ -226,6 +238,12 @@ needs two headers:
 | `GET /api/conversations` | The user's conversations, newest first |
 | `GET /api/conversations/{id}` | One conversation with its messages and citations |
 | `DELETE /api/conversations/{id}` | Delete a conversation |
+| `GET /api/admin/settings[?projectId=]` | Organization defaults (and a project's overrides). Keys are never returned, only whether one is set |
+| `PUT /api/admin/settings`, `PUT/DELETE /api/admin/projects/{id}/settings` | Save organization defaults or project overrides (admins). Changing the embedding model queues full re-indexing |
+| `POST /api/admin/settings/test` | Try the saved settings with one embedding and one chat call (admins) |
+| `GET /api/admin/projects/{id}/repositories` | A project's repositories with indexed branches and status |
+| `GET/PUT /api/admin/repositories/{id}/branches` | List a repository's branches; set which are indexed (admins) |
+| `POST /api/admin/repositories/{id}/reindex` | Queue re-indexing of a branch (admins) |
 
 `POST /api/chat` body: `{ "question": "...", "targets": [{ "repositoryId": "<ADO repo id>", "branch": "refs/heads/main" }] }`.
 To continue a conversation, send `conversationId` instead of (or as well as) `targets`.

@@ -1,10 +1,10 @@
 namespace ChatWithCode.Core.Abstractions;
 
 /// <summary>The signed-in Azure DevOps user, as confirmed by Azure DevOps itself.</summary>
-public sealed record AdoUser(string Id, string DisplayName);
+public sealed record AdoUser(string Id, string DisplayName, string? Email = null);
 
 /// <summary>A repository the user is allowed to read.</summary>
-public sealed record ReadableRepository(Guid Id, string Name, Guid ProjectId, string ProjectName);
+public sealed record ReadableRepository(Guid Id, string Name, Guid ProjectId, string ProjectName, string? DefaultBranch = null);
 
 /// <summary>
 /// Calls Azure DevOps with the signed-in user's own access token (from the extension).

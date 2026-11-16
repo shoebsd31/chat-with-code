@@ -43,7 +43,7 @@ public sealed record CitationDto(
     Uri? Url,
     bool Used);
 
-public sealed record MeDto(string Id, string DisplayName);
+public sealed record MeDto(string Id, string DisplayName, bool IsAdmin);
 
 public sealed record BranchDto(string Name, bool IsDefault, string Status, DateTimeOffset? LastIndexedAt, int FileCount, int ProgressDone, int ProgressTotal);
 

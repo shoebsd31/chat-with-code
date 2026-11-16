@@ -17,11 +17,11 @@ public sealed class AdoUserClientTests
     public async Task Confirms_the_user_with_their_own_token()
     {
         var stub = new StubHttpHandler().On("/contoso/_apis/connectionData", HttpStatusCode.OK,
-            $$$"""{"authenticatedUser":{"id":"{{{UserId}}}","providerDisplayName":"Ada Lovelace"},"instanceId":"x"}""");
+            $$$$"""{"authenticatedUser":{"id":"{{{{UserId}}}}","providerDisplayName":"Ada Lovelace","properties":{"Account":{"$type":"System.String","$value":"ada@contoso.com"}}},"instanceId":"x"}""");
 
         var user = await Client(stub).GetUserAsync("user-token", CancellationToken.None);
 
-        Assert.Equal(new AdoUser(UserId.ToString(), "Ada Lovelace"), user);
+        Assert.Equal(new AdoUser(UserId.ToString(), "Ada Lovelace", "ada@contoso.com"), user);
         Assert.Equal("Bearer user-token", stub.Requests[0].Request.Headers.Authorization!.ToString());
     }
 

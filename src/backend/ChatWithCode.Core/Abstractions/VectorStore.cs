@@ -6,6 +6,9 @@ public interface IVectorStore
     Task EnsureIndexAsync(IndexSpec spec, CancellationToken cancellationToken);
     Task UpsertAsync(IReadOnlyList<CodeChunk> chunks, CancellationToken cancellationToken);
     Task DeleteFilesAsync(RepoBranch target, IReadOnlyList<string> paths, CancellationToken cancellationToken);
+
+    /// <summary>Remove everything indexed for a branch (when it's taken out of the index).</summary>
+    Task DeleteBranchAsync(RepoBranch target, CancellationToken cancellationToken);
     Task<IReadOnlyList<SearchHit>> HybridSearchAsync(SearchQuery query, CancellationToken cancellationToken);
 }
 

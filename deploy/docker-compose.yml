@@ -43,6 +43,7 @@ services:
       AzureOpenAI__ChatDeployment: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-}
       Indexing__MaxFileSizeKb: ${INDEX_MAX_FILE_KB:-500}
       Chat__RetentionDays: ${CHAT_RETENTION_DAYS:-30}
+      Admin__Users: ${CHAT_ADMINS:-}
       Chat__RequestsPerMinute: ${CHAT_REQUESTS_PER_MINUTE:-20}
       Indexing__PollingEnabled: ${INDEX_POLLING_ENABLED:-true}
       Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-5}

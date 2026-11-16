@@ -43,6 +43,12 @@ public sealed class AdoGitClient(HttpClient http) : IAdoGitClient
         return refs.Value.FirstOrDefault(r => string.Equals(r.Name, fullName, StringComparison.Ordinal))?.ObjectId;
     }
 
+    public async Task<IReadOnlyList<string>> GetBranchesAsync(Guid repositoryId, CancellationToken cancellationToken)
+    {
+        var refs = await GetAsync<ListDto<RefDto>>($"_apis/git/repositories/{repositoryId}/refs?filter=heads%2F&{ApiVersion}", $"branches of repository {repositoryId}", cancellationToken);
+        return refs.Value.Select(r => r.Name).Order(StringComparer.Ordinal).ToList();
+    }
+
     public async Task<IReadOnlyList<AdoTreeEntry>> GetFilesAsync(Guid repositoryId, string commitId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commitId);

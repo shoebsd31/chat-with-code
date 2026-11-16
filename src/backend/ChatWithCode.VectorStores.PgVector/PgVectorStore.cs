@@ -70,6 +70,14 @@ public sealed class PgVectorStore(ChatWithCodeDbContext db) : IVectorStore
         }
     }
 
+    public async Task DeleteBranchAsync(RepoBranch target, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        await db.CodeChunks
+            .Where(c => c.RepositoryId == target.RepositoryId && c.Branch == target.Branch)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Vector search (HNSW, cosine) and keyword search (tsvector) over the allowed branches,
     /// merged with reciprocal rank fusion: a chunk's score is the sum of 1/(60 + rank) over the

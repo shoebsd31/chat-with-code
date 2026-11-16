@@ -42,6 +42,9 @@ internal sealed class FakeAdoGitClient : IAdoGitClient
     public Task<string?> GetBranchHeadAsync(Guid repositoryId, string branchRef, CancellationToken cancellationToken) =>
         Task.FromResult(_branches.TryGetValue(branchRef, out var commit) ? commit : null);
 
+    public Task<IReadOnlyList<string>> GetBranchesAsync(Guid repositoryId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>(_branches.Keys.Order(StringComparer.Ordinal).ToList());
+
     public Task<IReadOnlyList<AdoTreeEntry>> GetFilesAsync(Guid repositoryId, string commitId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<AdoTreeEntry>>(_commits[commitId].Select(f => new AdoTreeEntry(f.Key, BlobId(f.Value), f.Value.Length)).ToList());
 

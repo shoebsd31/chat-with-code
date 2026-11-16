@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ChatWithCode.Core.Abstractions;
 
 namespace ChatWithCode.AzureDevOps;
@@ -17,7 +18,16 @@ public sealed class AdoUserClient(HttpClient http) : IAdoUserClient
             throw new AdoAccessException("Azure DevOps didn't confirm who the user is. Sign in to Azure DevOps again.");
         }
 
-        return new AdoUser(user.Id.ToString(), user.ProviderDisplayName ?? user.CustomDisplayName ?? "Azure DevOps user");
+        // The sign-in name (usually the email address) is in the "Account" property.
+        string? email = null;
+        if (user.Properties is { ValueKind: JsonValueKind.Object } props &&
+            props.TryGetProperty("Account", out var account) &&
+            account.TryGetProperty("$value", out var value) && value.ValueKind == JsonValueKind.String)
+        {
+            email = value.GetString();
+        }
+
+        return new AdoUser(user.Id.ToString(), user.ProviderDisplayName ?? user.CustomDisplayName ?? "Azure DevOps user", email);
     }
 
     public async Task<IReadOnlyList<ReadableRepository>> GetReadableRepositoriesAsync(string userAccessToken, CancellationToken cancellationToken)
@@ -26,7 +36,7 @@ public sealed class AdoUserClient(HttpClient http) : IAdoUserClient
         var list = await GetAsync<ListDto<RepositoryDto>>("_apis/git/repositories?api-version=7.1", userAccessToken, cancellationToken);
         return list.Value
             .Where(r => r.IsDisabled != true)
-            .Select(r => new ReadableRepository(r.Id, r.Name, r.Project.Id, r.Project.Name))
+            .Select(r => new ReadableRepository(r.Id, r.Name, r.Project.Id, r.Project.Name, r.DefaultBranch))
             .ToList();
     }
 
@@ -49,11 +59,11 @@ public sealed class AdoUserClient(HttpClient http) : IAdoUserClient
 
     private sealed record ConnectionDataDto(IdentityDto? AuthenticatedUser);
 
-    private sealed record IdentityDto(Guid Id, string? ProviderDisplayName, string? CustomDisplayName);
+    private sealed record IdentityDto(Guid Id, string? ProviderDisplayName, string? CustomDisplayName, JsonElement? Properties);
 
     private sealed record ListDto<T>(List<T> Value);
 
-    private sealed record RepositoryDto(Guid Id, string Name, bool? IsDisabled, ProjectDto Project);
+    private sealed record RepositoryDto(Guid Id, string Name, bool? IsDisabled, string? DefaultBranch, ProjectDto Project);
 
     private sealed record ProjectDto(Guid Id, string Name);
 }

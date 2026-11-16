@@ -9,6 +9,9 @@ public interface IAdoGitClient
     /// <summary>Commit id at the tip of a branch (full ref name, e.g. refs/heads/main). Null when the branch doesn't exist.</summary>
     Task<string?> GetBranchHeadAsync(Guid repositoryId, string branchRef, CancellationToken cancellationToken);
 
+    /// <summary>All branches of a repository (full ref names, e.g. refs/heads/main).</summary>
+    Task<IReadOnlyList<string>> GetBranchesAsync(Guid repositoryId, CancellationToken cancellationToken);
+
     /// <summary>Every file (blob) in the repository at a commit, with sizes.</summary>
     Task<IReadOnlyList<AdoTreeEntry>> GetFilesAsync(Guid repositoryId, string commitId, CancellationToken cancellationToken);
 

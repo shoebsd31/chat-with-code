@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–3 and 4a built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–4 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -21,6 +21,7 @@ hosts.
 | Permissions | **Respect ADO repo permissions.** Users can only get answers from repos they can read. |
 | Backend | **.NET** (ASP.NET Core API + background worker). |
 | Frontend | React 19 + `azure-devops-extension-sdk`, built with Vite. Styled with the theme variables Azure DevOps provides, so it follows light and dark themes. (`azure-devops-ui` requires React 16, which is out of support.) |
+| Who can change settings | Emails listed in the backend's `CHAT_ADMINS`. Not Azure DevOps roles: checking those would need a high-privilege extension scope for every user. Everyone else sees settings read-only. |
 | Backend address | **Built in when the extension is packaged.** Org-wide extension settings can be changed by any user, so an address stored there could be redirected to collect sign-in tokens. |
 | Extension publishing | GitHub Actions: CI on pull requests; publishing on `extension-v*` tags or manually, signing in as an Entra app through GitHub OIDC (no stored secret). |
 | Where it appears | A hub **under Repos** ("Ask the Code"). Plus settings pages for admins. |
@@ -99,10 +100,9 @@ hosts.
   2. Caches the user and their repos for 5 minutes (keyed by a hash of the token).
   3. Rejects a chat request if any selected repo isn't in that list (HTTP 403).
   4. Passes the selected repos and branches as a filter to every search.
-- **Admin checks:**
-  - Org settings: only members of *Project Collection Administrators*.
-  - Project settings: only *Project Administrators*.
-  - Both are verified through ADO with the user's token.
+- **Admin checks:** the user's sign-in email (from `connectionData`, confirmed by Azure DevOps)
+  must be listed in `CHAT_ADMINS`. Reading settings is open to signed-in users; secrets are
+  never returned (only "set" and the last four characters).
 - **Streaming:** the chat endpoint returns Server-Sent Events. Events are `conversation`,
   `delta`, `citations`, `done` and `error`.
 - **Rate limit:** 20 questions per user per minute by default (`Chat:RequestsPerMinute`).

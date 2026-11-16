@@ -1,4 +1,4 @@
-import type { Api, ChatEvent, Citation, Conversation, ConversationSummary, Repository } from "../common/api";
+import type { AdminRepository, Api, ChatEvent, Citation, Conversation, ConversationSummary, ModelSettings, Repository, SaveSettings } from "../common/api";
 
 /**
  * Local development only: an in-browser stand-in for the backend with sample data, so the
@@ -83,11 +83,91 @@ let conversations: Conversation[] = [
   },
 ];
 
+const empty = { isSet: false, hint: null };
+let orgSettings: ModelSettings = {
+  azureOpenAIEndpoint: "https://contoso-ai.openai.azure.com/",
+  chatDeployment: "gpt-6-luna",
+  embeddingDeployment: "text-embedding-3-small",
+  embeddingDimensions: 1536,
+  useManagedIdentity: false,
+  apiKey: { isSet: true, hint: "…9f2c" },
+  vectorStore: "PgVector",
+  azureSearchEndpoint: null,
+  azureSearchIndexName: null,
+  azureSearchApiKey: empty,
+  updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
+  updatedBy: "ada@contoso.com",
+};
+let projectSettings: ModelSettings = { ...Object.fromEntries(Object.keys(orgSettings).map((k) => [k, null])), apiKey: empty, azureSearchApiKey: empty } as ModelSettings;
+
+let adminRepos: AdminRepository[] = [
+  {
+    id: "r1", name: "web-app", defaultBranch: "refs/heads/main", indexed: true,
+    branches: [
+      { name: "refs/heads/main", isDefault: true, status: "Ready", progressDone: 412, progressTotal: 412, fileCount: 412, chunkCount: 2380, lastIndexedAt: new Date(Date.now() - 600_000).toISOString(), lastError: null },
+      { name: "refs/heads/release/2.0", isDefault: false, status: "Indexing", progressDone: 128, progressTotal: 398, fileCount: 0, chunkCount: 0, lastIndexedAt: null, lastError: null },
+    ],
+  },
+  {
+    id: "r2", name: "payments-service", defaultBranch: "refs/heads/main", indexed: true,
+    branches: [{ name: "refs/heads/main", isDefault: true, status: "Failed", progressDone: 0, progressTotal: 0, fileCount: 0, chunkCount: 0, lastIndexedAt: null, lastError: "Azure OpenAI refused the request. Check the API key." }],
+  },
+  { id: "r4", name: "infrastructure", defaultBranch: "refs/heads/main", indexed: false, branches: [] },
+];
+
+const apply = (current: ModelSettings, v: SaveSettings): ModelSettings => ({
+  ...current,
+  ...v,
+  apiKey: v.apiKey === null ? current.apiKey : v.apiKey === "" ? empty : { isSet: true, hint: `…${v.apiKey.slice(-4)}` },
+  azureSearchApiKey: v.azureSearchApiKey === null ? current.azureSearchApiKey : v.azureSearchApiKey === "" ? empty : { isSet: true, hint: `…${v.azureSearchApiKey.slice(-4)}` },
+  updatedAt: new Date().toISOString(),
+  updatedBy: "ada@contoso.com",
+});
+
 export function createMockApi(): Api {
+  const isAdmin = new URLSearchParams(window.location.search).get("admin") !== "false";
+  const response = (projectId?: string) => ({ organization: orgSettings, project: projectId ? projectSettings : null, canEdit: isAdmin, problem: null });
   return {
     baseUrl: "https://chat.contoso.example (development stand-in)",
     info: async () => ({ name: "Chat with Code", version: "dev", organization: "contoso", extensionConnected: true }),
-    me: async () => ({ id: "u1", displayName: "Ada Lovelace" }),
+    me: async () => ({ id: "u1", displayName: "Ada Lovelace", isAdmin }),
+    admin: {
+      settings: async (projectId) => delay(250).then(() => response(projectId)),
+      saveSettings: async (values, projectId) => {
+        await delay(400);
+        if (projectId) projectSettings = apply(projectSettings, values);
+        else orgSettings = apply(orgSettings, values);
+        return { settings: response(projectId), reindexQueued: 0 };
+      },
+      removeProjectSettings: async () => {
+        projectSettings = { ...Object.fromEntries(Object.keys(orgSettings).map((k) => [k, null])), apiKey: empty, azureSearchApiKey: empty } as ModelSettings;
+      },
+      testSettings: async () => {
+        await delay(900);
+        return {
+          embedding: { ok: true, message: "text-embedding-3-small returned a 1536-dimension vector." },
+          chat: { ok: true, message: "gpt-6-luna answered (2 characters)." },
+        };
+      },
+      repositories: async () => delay(250).then(() => adminRepos),
+      branches: async () => delay(200).then(() => ["refs/heads/main", "refs/heads/release/2.0", "refs/heads/feature/checkout-v2"]),
+      setBranches: async (repositoryId, branches) => {
+        await delay(400);
+        adminRepos = adminRepos.map((r) =>
+          r.id !== repositoryId
+            ? r
+            : {
+                ...r,
+                indexed: branches.length > 0,
+                branches: branches.map((name) => r.branches.find((b) => b.name === name) ?? { name, isDefault: name === r.defaultBranch, status: "Queued", progressDone: 0, progressTotal: 0, fileCount: 0, chunkCount: 0, lastIndexedAt: null, lastError: null }),
+              },
+        );
+        return adminRepos.find((r) => r.id === repositoryId)!;
+      },
+      reindex: async (repositoryId, branch) => {
+        adminRepos = adminRepos.map((r) => (r.id !== repositoryId ? r : { ...r, branches: r.branches.map((b) => (b.name === branch ? { ...b, status: "Queued", lastError: null } : b)) }));
+      },
+    },
     repositories: async () => delay(300).then(() => repositories),
     conversations: async () => conversations.map(({ id, title, updatedAt, targets }): ConversationSummary => ({ id, title, updatedAt, targets })),
     conversation: async (id) => conversations.find((c) => c.id === id) ?? Promise.reject(new Error("That conversation doesn't exist anymore.")),
