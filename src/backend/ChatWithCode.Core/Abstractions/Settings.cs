@@ -75,3 +75,10 @@ public interface IVectorStoreFactory
 {
     IVectorStore Create(EffectiveModelSettings settings);
 }
+
+/// <summary>Creates chat models for the configured provider.</summary>
+public interface IChatModelFactory
+{
+    /// <summary>Throws <see cref="SettingsIncompleteException"/> when no chat deployment is configured.</summary>
+    IChatModel Create(EffectiveModelSettings settings);
+}

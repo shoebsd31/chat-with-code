@@ -29,6 +29,7 @@ public sealed class AzureOpenAIEmbedderFactory(HttpClient? transport = null) : I
             RetryPolicy = new ClientRetryPolicy(maxRetries: 6),
             NetworkTimeout = TimeSpan.FromSeconds(100),
         };
+        options.AddPolicy(new MaxCompletionTokensPolicy(), PipelinePosition.PerCall);
         if (transport is not null)
         {
             options.Transport = new HttpClientPipelineTransport(transport);

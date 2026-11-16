@@ -188,5 +188,9 @@ public sealed class Citation
     public required string Path { get; set; }
     public int StartLine { get; set; }
     public int EndLine { get; set; }
+    public string? Symbol { get; set; }
     public double Score { get; set; }
+
+    /// <summary>True when the answer cited this source; false for "closest files" shown when nothing was found.</summary>
+    public bool Used { get; set; }
 }

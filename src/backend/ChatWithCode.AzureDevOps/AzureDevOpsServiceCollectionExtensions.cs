@@ -40,6 +40,14 @@ public static class AzureDevOpsServiceCollectionExtensions
                 o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(4);
             });
 
+        // Calls made as the signed-in user: no service principal token, the user's own token is added per request.
+        services.AddHttpClient<IAdoUserClient, AdoUserClient>((sp, http) =>
+            {
+                http.BaseAddress = sp.GetRequiredService<IOptions<AzureDevOpsOptions>>().Value.OrganizationUrl;
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("ChatWithCode/1.0");
+            })
+            .AddStandardResilienceHandler();
+
         return services;
     }
 

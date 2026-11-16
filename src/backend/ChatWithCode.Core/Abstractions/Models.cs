@@ -22,3 +22,19 @@ public sealed record ChatRequest(string SystemPrompt, IReadOnlyList<ChatMessage>
 
 /// <summary>One streamed piece of an answer. Token counts arrive on the final delta.</summary>
 public sealed record ChatDelta(string Text, int? PromptTokens = null, int? CompletionTokens = null);
+
+public static class ChatModelExtensions
+{
+    /// <summary>Run a request to completion and return the whole text (for short internal calls).</summary>
+    public static async Task<string> CompleteAsync(this IChatModel model, ChatRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var text = new System.Text.StringBuilder();
+        await foreach (var delta in model.StreamAsync(request, cancellationToken))
+        {
+            text.Append(delta.Text);
+        }
+
+        return text.ToString();
+    }
+}

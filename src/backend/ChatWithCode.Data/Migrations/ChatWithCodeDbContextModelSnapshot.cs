@@ -68,6 +68,15 @@ namespace ChatWithCode.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("start_line");
 
+                    b.Property<string>("Symbol")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("symbol");
+
+                    b.Property<bool>("Used")
+                        .HasColumnType("boolean")
+                        .HasColumnName("used");
+
                     b.HasKey("Id")
                         .HasName("pk_citations");
 
@@ -195,6 +204,9 @@ namespace ChatWithCode.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_conversations");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_conversations_updated_at");
 
                     b.HasIndex("OrganizationId", "UserId", "UpdatedAt")
                         .HasDatabaseName("ix_conversations_organization_id_user_id_updated_at");

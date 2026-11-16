@@ -33,11 +33,16 @@ builder.Services.AddOptions<IndexingOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<ChatOptions>()
+    .Bind(builder.Configuration.GetSection(ChatOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 builder.Services.AddChatWithCodeData(builder.Configuration);
 builder.Services.AddAzureDevOps();
 builder.Services.AddPgVectorStore();
 builder.Services.AddSingleton<IEmbedderFactory>(new AzureOpenAIEmbedderFactory());
-builder.Services.AddScoped<IVectorStoreFactory, VectorStoreFactory>();
+builder.Services.AddScoped<IVectorStoreFactory, KeyedVectorStoreFactory>();
 builder.Services.AddSingleton<ITokenCounter, Cl100kTokenCounter>();
 builder.Services.AddSingleton(sp => new ChunkerSelector(sp.GetRequiredService<ITokenCounter>()));
 builder.Services.AddScoped<IIndexJobHandler, RepositoryIndexer>();
@@ -51,6 +56,7 @@ if (isCommand)
 }
 
 builder.Services.AddHostedService<IndexJobWorker>();
+builder.Services.AddHostedService<ConversationRetentionService>();
 
 // The API applies database migrations; the worker starts after it (see deploy/docker-compose.yml).
 await builder.Build().RunAsync();

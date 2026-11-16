@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–2 built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–3 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -17,7 +17,7 @@ hosts.
 | Topic | Decision |
 |---|---|
 | Azure DevOps edition | **ADO Services only** (dev.azure.com). No on-prem Server. |
-| Hosting | **Self-hosted** by each customer (docker compose first). |
+| Hosting | **Self-hosted** by each customer. Production target: **Azure Container Apps** (phase 8). Docker Compose for local and small installs. |
 | Permissions | **Respect ADO repo permissions.** Users can only get answers from repos they can read. |
 | Backend | **.NET** (ASP.NET Core API + background worker). |
 | Frontend | React + `azure-devops-extension-sdk` + `azure-devops-ui`, so it looks native to ADO. |
@@ -29,6 +29,9 @@ hosts.
 | Re-indexing | **Automatically on push** (changed files only), plus a manual "Re-index now" button. |
 | Chat scope | One conversation can search **one or more repos**. |
 | v1 chat features | Clickable file/line citations, saved chat history, Mermaid diagrams in answers. |
+| Default chat model | `gpt-6-luna` (admins can change it per organization or project). |
+| No answer in the code | Say so ("I couldn't find this in the selected repositories.") and show the closest files. Never answer from general knowledge. |
+| Conversation retention | Deleted after **30 days** without new messages (`Chat:RetentionDays`). |
 | Not in v1 | ADO Wiki, work items and PRs; providers other than Azure OpenAI; vector stores other than the two above. |
 
 ## 3. Architecture
@@ -70,30 +73,35 @@ hosts.
 - **Backend URL:** each customer self-hosts, so the backend URL is set once per organization
   and stored in the extension's data service. It isn't a secret.
 - **Calls to the backend send:**
-  - `SDK.getAppToken()`: a JWT signed with the extension's secret. It proves the request
-    comes from our extension and says who the user is.
-  - `SDK.getAccessToken()`: the user's own ADO token. The backend uses it only to check
-    which repos the user can read.
+  - `SDK.getAppToken()` as `Authorization: Bearer`: a JWT signed with the extension's secret.
+    Its signature proves the request comes from our extension.
+  - `SDK.getAccessToken()` as `X-AzureDevOps-Token`: the user's own ADO token. The backend
+    never decodes it; see 3.2.
 - **Mermaid:** the `mermaid` library is bundled into the extension and renders
   ```` ```mermaid ```` blocks in answers.
 
 ### 3.2 API (`ChatWithCode.Api`)
 
-- **Authentication:** validates the extension token (HS256, using the extension's secret
-  from the Marketplace publisher portal) and checks that the organization matches the
-  configured one.
+- **Authentication:** validates the extension token (HS256 signature and lifetime, using the
+  extension's secret from the Marketplace publisher portal), as Microsoft documents.
+- **Who the user is:** Microsoft says Azure DevOps token claims are undocumented and may be
+  encrypted, so tokens must be treated as opaque. The backend therefore never reads claims.
+  It calls `GET {org}/_apis/connectionData` with the user's token to get the user's id and
+  name. Only members of the configured organization get an answer, which also checks the
+  organization.
 - **Permission trimming:**
-  1. Calls `GET /{project}/_apis/git/repositories` with the user's token. ADO only returns
+  1. Calls `GET {org}/_apis/git/repositories` with the user's token. ADO only returns
      repos the user can read.
-  2. Caches the result per user for 5 minutes.
-  3. Intersects it with the repos the user selected.
-  4. Passes the remaining repos as a filter to every vector search.
+  2. Caches the user and their repos for 5 minutes (keyed by a hash of the token).
+  3. Rejects a chat request if any selected repo isn't in that list (HTTP 403).
+  4. Passes the selected repos and branches as a filter to every search.
 - **Admin checks:**
   - Org settings: only members of *Project Collection Administrators*.
   - Project settings: only *Project Administrators*.
   - Both are verified through ADO with the user's token.
-- **Streaming:** the chat endpoint returns Server-Sent Events. Events are `token`,
-  `citations`, `done` and `error`.
+- **Streaming:** the chat endpoint returns Server-Sent Events. Events are `conversation`,
+  `delta`, `citations`, `done` and `error`.
+- **Rate limit:** 20 questions per user per minute by default (`Chat:RequestsPerMinute`).
 - **CORS:** allows only the extension's hosting origins.
 
 ### 3.3 Indexer (`ChatWithCode.Worker`)
@@ -179,7 +187,9 @@ trigger ─► fetch ─► filter ─► chunk ─► embed ─► upsert ─�
 4. **Prompt:** answer only from the sources, cite them as `[1]`, `[2]`…, and say clearly when
    the answer isn't in the code. Repo content is wrapped as data that the model is told not
    to follow as instructions, to limit prompt injection from code comments.
-5. **Stream** the answer, then send the citation list. Each citation links to
+5. **Stream** the answer, then send the citation list: the sources the answer cited, or, when
+   it cited none, the top 5 as "closest files". If search finds nothing at all, the model
+   isn't called. Each citation links to
    `https://dev.azure.com/{org}/{project}/_git/{repo}?path={path}&version=GB{branch}&line={start}&lineEnd={end}&lineStartColumn=1&lineEndColumn=1`.
 6. **Save** the conversation, messages, citations and token usage.
 
@@ -207,7 +217,9 @@ public interface IVectorStore   // v1: PgVectorStore, AzureAISearchStore
 }
 ```
 
-The Azure OpenAI adapters use the official `Azure.AI.OpenAI` SDK. Later providers (OpenAI,
+The Azure OpenAI adapters use the official `Azure.AI.OpenAI` SDK. Chat requests send
+`max_completion_tokens` (not the legacy `max_tokens`) and no `temperature`, because reasoning
+models such as GPT-6 reject both. Later providers (OpenAI,
 OpenRouter, Ollama/vLLM) can share one OpenAI-compatible adapter.
 
 ### 3.6 Settings and keys
@@ -283,7 +295,8 @@ README.md                           setup guide
 | 4 | Extension | Ask the Code hub (repo picker, chat, sources, Mermaid) and both settings pages |
 | 5 | Azure AI Search | Second vector store adapter |
 | 6 | Auto re-index | Service hook receiver, polling fallback, branch selection, index status UI |
-| 7 | Hardening | Tests, rate limits, README setup guide, how to publish the extension privately |
+| 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
+| 8 | Azure Container Apps | Bicep template: Container Apps (API + worker), Azure Database for PostgreSQL Flexible Server with pgvector, encryption key ring in Blob Storage protected by Key Vault, managed identity for Azure OpenAI, HTTPS ingress |
 
 ## 6. Testing limits in this environment
 

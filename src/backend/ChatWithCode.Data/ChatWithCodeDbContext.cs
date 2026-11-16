@@ -86,6 +86,7 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
         {
             e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.OrganizationId, x.UserId, x.UpdatedAt });
+            e.HasIndex(x => x.UpdatedAt); // retention clean-up
             e.Property(x => x.UserId).HasMaxLength(200);
             e.Property(x => x.Title).HasMaxLength(200);
             e.OwnsMany(x => x.Targets, t =>
@@ -134,6 +135,7 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
             e.HasIndex(x => x.MessageId);
             e.Property(x => x.Branch).HasMaxLength(400);
             e.Property(x => x.Path).HasMaxLength(2000);
+            e.Property(x => x.Symbol).HasMaxLength(500);
         });
     }
 }
