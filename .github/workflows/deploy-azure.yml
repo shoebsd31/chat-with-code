@@ -1,0 +1,169 @@
+# Deploys the backend to Azure Container Apps (infra/main.bicep).
+#
+# Runs from the Actions tab ("Run workflow") or when a tag like "backend-v1.2.0" is pushed.
+# Signs in to Azure with GitHub's OIDC token: no Azure secret is stored in GitHub, and the app's
+# own secrets (extension secret, webhook password) live only in Key Vault.
+# Setup: README.md, "Deploy to Azure Container Apps".
+name: Deploy to Azure
+
+on:
+  push:
+    tags: ["backend-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # lets azure/login exchange GitHub's OIDC token for an Entra token
+
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    # Variables live on this environment; add required reviewers to it to approve each deployment.
+    environment: azure
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      LOCATION: ${{ vars.AZURE_LOCATION }}
+      NAME_PREFIX: ${{ vars.NAME_PREFIX || 'chatcode' }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Check configuration
+        env:
+          CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ADO_ORGANIZATION: ${{ vars.ADO_ORGANIZATION }}
+        run: |
+          missing=()
+          [ -n "$CLIENT_ID" ]        || missing+=("AZURE_CLIENT_ID (the deployment app's application/client ID)")
+          [ -n "$TENANT_ID" ]        || missing+=("AZURE_TENANT_ID")
+          [ -n "$SUBSCRIPTION_ID" ]  || missing+=("AZURE_SUBSCRIPTION_ID")
+          [ -n "$RESOURCE_GROUP" ]   || missing+=("AZURE_RESOURCE_GROUP (created if missing)")
+          [ -n "$LOCATION" ]         || missing+=("AZURE_LOCATION (e.g. westeurope)")
+          [ -n "$ADO_ORGANIZATION" ] || missing+=("ADO_ORGANIZATION (the part after https://dev.azure.com/)")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Set these variables on the 'azure' environment (Settings > Environments > azure):"
+            printf '  - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Sign in to Azure (OIDC, no secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resource group
+        run: az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+
+      - name: Who is deploying
+        id: deployer
+        run: |
+          # The deployment identity's object id, from its own token, so it can be given Key Vault access.
+          oid=$(az account get-access-token --query accessToken -o tsv | cut -d. -f2 | python3 -c "import sys,base64,json; p=sys.stdin.read().strip(); p+='='*(-len(p)%4); print(json.loads(base64.urlsafe_b64decode(p))['oid'])")
+          echo "oid=$oid" >> "$GITHUB_OUTPUT"
+
+      - name: Infrastructure (first pass, without apps)
+        id: infra
+        env:
+          ADO_ORGANIZATION: ${{ vars.ADO_ORGANIZATION }}
+        run: |
+          outputs=$(az deployment group create --resource-group "$RESOURCE_GROUP" --name "chat-with-code-infra" \
+            --template-file infra/main.bicep \
+            --parameters namePrefix="$NAME_PREFIX" adoOrganization="$ADO_ORGANIZATION" deployApps=false \
+                         deployerPrincipalId="${{ steps.deployer.outputs.oid }}" \
+            --query properties.outputs -o json)
+          echo "registry=$(echo "$outputs" | jq -r .registryName.value)" >> "$GITHUB_OUTPUT"
+          echo "vault=$(echo "$outputs" | jq -r .keyVaultName.value)" >> "$GITHUB_OUTPUT"
+
+      - name: Build images in Azure Container Registry
+        env:
+          REGISTRY: ${{ steps.infra.outputs.registry }}
+        run: |
+          for target in api worker; do
+            az acr build --registry "$REGISTRY" --image "chat-with-code-$target:$IMAGE_TAG" \
+              --target "$target" --file src/backend/Dockerfile src/backend --output none
+          done
+
+      - name: Make sure the Key Vault secrets exist
+        env:
+          VAULT: ${{ steps.infra.outputs.vault }}
+        run: |
+          # Missing secrets get unguessable random values so the apps can start. Replace the
+          # extension secret with the real one afterwards (see the summary). Existing values are kept.
+          for name in extension-secret webhook-password; do
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if az keyvault secret show --vault-name "$VAULT" --name "$name" --query id -o tsv >/dev/null 2>&1; then
+                echo "$name: exists"; break
+              fi
+              if az keyvault secret set --vault-name "$VAULT" --name "$name" --value "$(openssl rand -base64 48)" --output none 2>/dev/null; then
+                echo "$name: created with a random value"; break
+              fi
+              echo "Waiting for Key Vault access to apply (attempt $attempt)…"; sleep 30
+            done
+          done
+
+      - name: Apps (second pass)
+        id: apps
+        env:
+          ADO_ORGANIZATION: ${{ vars.ADO_ORGANIZATION }}
+          CHAT_ADMINS: ${{ vars.CHAT_ADMINS }}
+          EXTENSION_ORIGIN: ${{ vars.EXTENSION_ORIGIN }}
+          POLL_MINUTES: ${{ vars.POLL_INTERVAL_MINUTES || '5' }}
+          OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          OPENAI_CHAT: ${{ vars.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          OPENAI_EMBEDDING: ${{ vars.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+          OPENAI_RESOURCE_ID: ${{ vars.AZURE_OPENAI_RESOURCE_ID }}
+          SEARCH_RESOURCE_ID: ${{ vars.AZURE_SEARCH_RESOURCE_ID }}
+        run: |
+          outputs=$(az deployment group create --resource-group "$RESOURCE_GROUP" --name "chat-with-code-apps" \
+            --template-file infra/main.bicep \
+            --parameters namePrefix="$NAME_PREFIX" adoOrganization="$ADO_ORGANIZATION" deployApps=true imageTag="$IMAGE_TAG" \
+                         deployerPrincipalId="${{ steps.deployer.outputs.oid }}" chatAdmins="$CHAT_ADMINS" \
+                         extensionOrigin="$EXTENSION_ORIGIN" pollIntervalMinutes="$POLL_MINUTES" \
+                         azureOpenAIEndpoint="$OPENAI_ENDPOINT" azureOpenAIChatDeployment="$OPENAI_CHAT" \
+                         azureOpenAIEmbeddingDeployment="$OPENAI_EMBEDDING" azureOpenAIResourceId="$OPENAI_RESOURCE_ID" \
+                         azureSearchResourceId="$SEARCH_RESOURCE_ID" \
+            --query properties.outputs -o json)
+          echo "url=$(echo "$outputs" | jq -r .apiUrl.value)" >> "$GITHUB_OUTPUT"
+          echo "identity=$(echo "$outputs" | jq -r .identityName.value)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the API to be healthy
+        env:
+          URL: ${{ steps.apps.outputs.url }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$URL/health/ready" >/dev/null 2>&1; then echo "Healthy: $URL"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::The API didn't become healthy. Check the logs: az containerapp logs show -g $RESOURCE_GROUP -n $NAME_PREFIX-api --follow"
+          exit 1
+
+      - name: Summary
+        env:
+          URL: ${{ steps.apps.outputs.url }}
+          IDENTITY: ${{ steps.apps.outputs.identity }}
+          VAULT: ${{ steps.infra.outputs.vault }}
+        run: |
+          {
+            echo "### Chat with code is running"
+            echo ""
+            echo "- **Service address:** $URL (use it as \`--backend-url\` when packaging the extension, or the \`CWC_BACKEND_URL\` variable of the publish workflow)"
+            echo "- **App identity:** \`$IDENTITY\`"
+            echo "- **Key Vault:** \`$VAULT\`"
+            echo ""
+            echo "If this is the first deployment:"
+            echo "1. In Azure DevOps, **Organization settings > Users > Add users**: add \`$IDENTITY\` with Basic access and add it to the projects to index."
+            echo "2. Put the extension's secret (Marketplace publisher portal > extension > Certificate) into Key Vault:"
+            echo "   \`az keyvault secret set --vault-name $VAULT --name extension-secret --value <secret>\`"
+            echo "3. Restart both apps so they read it right away (otherwise they pick it up within about 30 minutes):"
+            echo "   \`for app in api worker; do az containerapp revision restart -g $RESOURCE_GROUP -n $NAME_PREFIX-\$app --revision \$(az containerapp revision list -g $RESOURCE_GROUP -n $NAME_PREFIX-\$app --query \"[?properties.active].name | [0]\" -o tsv); done\`"
+            echo "4. For push notifications, the service hook password is the \`webhook-password\` secret in Key Vault."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,130 @@
+# Publishes the Azure DevOps extension to the Visual Studio Marketplace as a private extension.
+#
+# Runs when a tag like "extension-v1.2.0" is pushed, or from the Actions tab ("Run workflow").
+# Signs in as a Microsoft Entra app through GitHub's OIDC token (workload identity federation),
+# so no Marketplace token or client secret is stored in GitHub. Setup: README.md,
+# "Publish with GitHub Actions".
+name: Publish extension
+
+on:
+  push:
+    tags: ["extension-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 1.2.0). Must be higher than the published version."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # lets azure/login exchange GitHub's OIDC token for an Entra token
+
+concurrency:
+  group: extension-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    # Variables live on this environment; add required reviewers to it to approve each release.
+    environment: marketplace
+    defaults:
+      run:
+        working-directory: src/extension
+    steps:
+      - name: Check configuration
+        working-directory: .
+        env:
+          BACKEND_URL: ${{ vars.CWC_BACKEND_URL }}
+          PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
+          SHARE_WITH: ${{ vars.ADO_ORGANIZATION }}
+          CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          missing=()
+          [ -n "$BACKEND_URL" ] || missing+=("CWC_BACKEND_URL (backend address, e.g. https://chat.contoso.com)")
+          [ -n "$PUBLISHER" ]   || missing+=("MARKETPLACE_PUBLISHER (your Marketplace publisher ID)")
+          [ -n "$SHARE_WITH" ]  || missing+=("ADO_ORGANIZATION (Azure DevOps organization to share with)")
+          [ -n "$CLIENT_ID" ]   || missing+=("AZURE_CLIENT_ID (Entra app's application/client ID)")
+          [ -n "$TENANT_ID" ]   || missing+=("AZURE_TENANT_ID (Entra tenant ID)")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Set these variables on the 'marketplace' environment (Settings > Environments > marketplace):"
+            printf '  - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Work out the version
+        id: version
+        working-directory: .
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then version="${REF_NAME#extension-v}"; else version="$INPUT_VERSION"; fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' isn't a version like 1.2.0. Tags must look like extension-v1.2.0."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $version"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/extension/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        env:
+          BACKEND_URL: ${{ vars.CWC_BACKEND_URL }}
+          PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
+        run: npm run package -- --backend-url "$BACKEND_URL" --publisher "$PUBLISHER" --version "${{ steps.version.outputs.version }}"
+
+      - name: Sign in to Microsoft Entra (OIDC, no secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Publish to the Marketplace
+        env:
+          PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER }}
+          SHARE_WITH: ${{ vars.ADO_ORGANIZATION }}
+        run: |
+          # The token is fetched and used in this one step, so it's never stored in step outputs.
+          # 499b84ac-1321-427f-aa17-267ca6975798 is the Azure DevOps / Marketplace resource.
+          resource=499b84ac-1321-427f-aa17-267ca6975798
+          token=$(az account get-access-token --resource "$resource" --query accessToken -o tsv)
+          echo "::add-mask::$token"
+
+          # Shown on every run: the identity to add as a Contributor on the Marketplace publisher.
+          profile=$(az rest --method get --url "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1" \
+            --resource "$resource" --query "[id, displayName]" -o tsv 2>/dev/null | tr '\n' ' ' || true)
+          echo "Publishing as Marketplace identity: ${profile:-unknown}"
+
+          vsix=$(ls out/*.vsix)
+          if ! npx tfx extension publish --vsix "$vsix" --publisher "$PUBLISHER" --share-with "$SHARE_WITH" \
+               --auth-type pat --token "$token" --no-prompt; then
+            echo "::error::Publishing failed. If this is the first run, add the identity printed above as a Contributor on the publisher (Marketplace > Manage > $PUBLISHER > Members), then run again. Also check that the version is higher than the published one."
+            exit 1
+          fi
+          echo "### Published Chat with code ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Shared with **$SHARE_WITH**. Organizations that have it installed update automatically." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the .vsix with the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-with-code-${{ steps.version.outputs.version }}
+          path: src/extension/out/*.vsix
+          retention-days: 90

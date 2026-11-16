@@ -1,0 +1,75 @@
+# Chat with Code — self-hosted backend.
+#   cp .env.example .env    (then edit .env)
+#   docker compose up -d --build
+name: chat-with-code
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatwithcode
+      POSTGRES_USER: chatwithcode
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatwithcode -d chatwithcode"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../src/backend
+      target: api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment: &backend-env
+      ConnectionStrings__Metadata: Host=db;Port=5432;Database=chatwithcode;Username=chatwithcode;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
+      AzureDevOps__Organization: ${ADO_ORGANIZATION:?Set ADO_ORGANIZATION in .env}
+      AzureDevOps__ExtensionSecret: ${ADO_EXTENSION_SECRET:-}
+      AzureDevOps__ServicePrincipal__TenantId: ${ADO_SP_TENANT_ID:-}
+      AzureDevOps__ServicePrincipal__ClientId: ${ADO_SP_CLIENT_ID:-}
+      AzureDevOps__ServicePrincipal__ClientSecret: ${ADO_SP_CLIENT_SECRET:-}
+      AzureOpenAI__Endpoint: ${AZURE_OPENAI_ENDPOINT:-}
+      AzureOpenAI__ApiKey: ${AZURE_OPENAI_API_KEY:-}
+      AzureOpenAI__UseManagedIdentity: ${AZURE_OPENAI_USE_MANAGED_IDENTITY:-false}
+      AzureOpenAI__EmbeddingDeployment: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
+      AzureOpenAI__ChatDeployment: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-}
+      VectorStore__Kind: ${VECTOR_STORE:-PgVector}
+      VectorStore__AzureSearchEndpoint: ${AZURE_SEARCH_ENDPOINT:-}
+      VectorStore__AzureSearchIndexName: ${AZURE_SEARCH_INDEX:-}
+      VectorStore__AzureSearchApiKey: ${AZURE_SEARCH_API_KEY:-}
+      Indexing__MaxFileSizeKb: ${INDEX_MAX_FILE_KB:-500}
+      Chat__RetentionDays: ${CHAT_RETENTION_DAYS:-30}
+      Admin__Users: ${CHAT_ADMINS:-}
+      Chat__RequestsPerMinute: ${CHAT_REQUESTS_PER_MINUTE:-20}
+      Indexing__PollingEnabled: ${INDEX_POLLING_ENABLED:-true}
+      Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-0}
+      Security__AllowedOrigins__0: ${EXTENSION_ORIGIN:-}
+      Security__WebhookUsername: ${WEBHOOK_USERNAME:-}
+      Security__WebhookPassword: ${WEBHOOK_PASSWORD:-}
+    volumes:
+      - keys:/var/lib/chatwithcode/keys
+
+  worker:
+    build:
+      context: ../src/backend
+      target: worker
+    restart: unless-stopped
+    depends_on:
+      # The API applies database migrations on start; the worker waits until it is healthy.
+      api:
+        condition: service_healthy
+    environment: *backend-env
+    volumes:
+      - keys:/var/lib/chatwithcode/keys
+
+volumes:
+  pgdata:
+  keys:

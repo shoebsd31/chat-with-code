@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Editors
+.vscode/
+.idea/
+
+# Node (extension)
+node_modules/
+dist/
+*.vsix
+
+# Secrets
+.env
+deploy/.env

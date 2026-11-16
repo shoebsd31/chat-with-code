@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Rules that add noise for an app this size: internal-by-default, LoggerMessage delegates, reserved names, "Queue" suffix, log-argument cost. -->
+    <NoWarn>$(NoWarn);CA1515;CA1848;CA1716;CA1711;CA1873</NoWarn>
+  </PropertyGroup>
+</Project>
