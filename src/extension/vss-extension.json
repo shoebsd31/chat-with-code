@@ -1,0 +1,55 @@
+{
+  "manifestVersion": 1,
+  "id": "chat-with-code",
+  "publisher": "your-publisher-id",
+  "version": "1.0.0",
+  "name": "Chat with code",
+  "description": "Chat with the code and markdown in your Azure DevOps repositories, answered by your own Azure OpenAI deployment from your own index.",
+  "public": false,
+  "categories": ["Azure Repos"],
+  "tags": ["chat", "code search", "RAG", "Azure OpenAI"],
+  "targets": [{ "id": "Microsoft.VisualStudio.Services.Cloud" }],
+  "icons": { "default": "images/icon.png" },
+  "content": { "details": { "path": "overview.md" } },
+  "scopes": ["vso.code", "vso.profile"],
+  "files": [
+    { "path": "dist", "addressable": true },
+    { "path": "images", "addressable": true }
+  ],
+  "contributions": [
+    {
+      "id": "chat-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Ask questions about the code in your repositories.",
+      "targets": ["ms.vss-code-web.code-hub-group"],
+      "properties": {
+        "name": "Chat with code",
+        "uri": "dist/hub.html",
+        "iconName": "Chat",
+        "order": 100
+      }
+    },
+    {
+      "id": "organization-settings",
+      "type": "ms.vss-web.hub",
+      "description": "Chat with code connection and settings for the organization.",
+      "targets": ["ms.vss-web.collection-admin-hub-group"],
+      "properties": {
+        "name": "Chat with code",
+        "uri": "dist/settings.html?scope=organization",
+        "order": 100
+      }
+    },
+    {
+      "id": "project-settings",
+      "type": "ms.vss-web.hub",
+      "description": "Chat with code settings for this project.",
+      "targets": ["ms.vss-web.project-admin-hub-group"],
+      "properties": {
+        "name": "Chat with code",
+        "uri": "dist/settings.html?scope=project",
+        "order": 100
+      }
+    }
+  ]
+}

@@ -119,6 +119,41 @@ Files are split into chunks before embedding: small files stay whole, markdown i
 heading, C# by class and method, and other languages at blank lines, all under about
 1,500 tokens per chunk.
 
+## Package the extension
+
+The extension lives in `src/extension` (React, built with Vite). Each organization publishes
+its own private copy, with its backend address built in:
+
+```bash
+cd src/extension
+```
+
+```bash
+npm ci
+```
+
+```bash
+npm run package -- --backend-url https://chat.example.com --publisher your-publisher-id --version 1.0.0
+```
+
+This writes `out/your-publisher-id.chat-with-code-1.0.0.vsix`. Upload it in the
+[Marketplace publisher portal](https://marketplace.visualstudio.com/manage), share it with your
+organization and install it. Then:
+
+1. Copy the extension's secret (publisher portal > extension > **Certificate**) into
+   `ADO_EXTENSION_SECRET` on the backend.
+2. Set `EXTENSION_ORIGIN=https://your-publisher-id.gallerycdn.vsassets.io` on the backend, so
+   the browser may call it (CORS).
+3. Open **Organization settings > Chat with code** and select **Test connection**.
+
+The backend address is built in on purpose. Settings an extension stores for the whole
+organization can be changed by any of its users, so a stored address could be redirected to
+collect everyone's sign-in tokens.
+
+To work on the screens without Azure DevOps, run `npm run dev` and open
+`http://localhost:5173/hub.html` (add `?theme=dark` for the dark theme). It uses sample data
+and never contacts a backend. `npm test` runs the unit tests.
+
 ## Chat API
 
 The extension (phase 4) talks to these endpoints. Every `/api/*` call except `/api/info`
