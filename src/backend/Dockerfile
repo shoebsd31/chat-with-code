@@ -10,6 +10,7 @@ COPY ChatWithCode.Data/ChatWithCode.Data.csproj ChatWithCode.Data/
 COPY ChatWithCode.AzureDevOps/ChatWithCode.AzureDevOps.csproj ChatWithCode.AzureDevOps/
 COPY ChatWithCode.AzureOpenAI/ChatWithCode.AzureOpenAI.csproj ChatWithCode.AzureOpenAI/
 COPY ChatWithCode.VectorStores.PgVector/ChatWithCode.VectorStores.PgVector.csproj ChatWithCode.VectorStores.PgVector/
+COPY ChatWithCode.VectorStores.AzureAISearch/ChatWithCode.VectorStores.AzureAISearch.csproj ChatWithCode.VectorStores.AzureAISearch/
 COPY ChatWithCode.Api/ChatWithCode.Api.csproj ChatWithCode.Api/
 COPY ChatWithCode.Worker/ChatWithCode.Worker.csproj ChatWithCode.Worker/
 RUN dotnet restore ChatWithCode.Api/ChatWithCode.Api.csproj \
@@ -20,6 +21,7 @@ COPY ChatWithCode.Data/ ChatWithCode.Data/
 COPY ChatWithCode.AzureDevOps/ ChatWithCode.AzureDevOps/
 COPY ChatWithCode.AzureOpenAI/ ChatWithCode.AzureOpenAI/
 COPY ChatWithCode.VectorStores.PgVector/ ChatWithCode.VectorStores.PgVector/
+COPY ChatWithCode.VectorStores.AzureAISearch/ ChatWithCode.VectorStores.AzureAISearch/
 COPY ChatWithCode.Api/ ChatWithCode.Api/
 COPY ChatWithCode.Worker/ ChatWithCode.Worker/
 RUN dotnet publish ChatWithCode.Api/ChatWithCode.Api.csproj -c Release -o /out/api --no-restore \

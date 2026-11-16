@@ -100,12 +100,18 @@ public sealed class AdminService(
         // A different embedding model makes existing vectors useless: re-index those branches in full.
         var after = await EmbeddingIdentitiesAsync(ct);
         var queued = 0;
-        foreach (var (branchId, identity) in after)
+        foreach (var (branchId, now) in after)
         {
-            if (identity is not null && before.TryGetValue(branchId, out var old) && old != identity)
+            if (now is not null && before.TryGetValue(branchId, out var old) && old?.Identity != now.Identity)
             {
                 await queue.EnqueueAsync(branchId, IndexJobType.Full, cancellationToken: ct);
                 queued++;
+
+                // Moving to another store or index: remove the branch from the old one so nothing is left behind.
+                if (old is not null && old.StoreKey != now.StoreKey)
+                {
+                    await DeleteFromStoreAsync(old, ct);
+                }
             }
         }
 
@@ -310,36 +316,55 @@ public sealed class AdminService(
         }
     }
 
-    /// <summary>For every enabled branch: the embedding model and size its project's settings use now (null if incomplete).</summary>
-    private async Task<Dictionary<Guid, string?>> EmbeddingIdentitiesAsync(CancellationToken ct)
+    /// <summary>Where and how a branch is indexed under the current settings.</summary>
+    private sealed record IndexIdentity(EffectiveModelSettings Settings, RepoBranch Target)
+    {
+        public string StoreKey => $"{Settings.VectorStore}|{Settings.AzureSearchEndpoint}|{Settings.AzureSearchIndexName}";
+
+        public string Identity => $"{Settings.EmbeddingModelId}|{Settings.EmbeddingDimensions}|{StoreKey}";
+    }
+
+    /// <summary>For every indexed branch: its settings now (null when they're incomplete).</summary>
+    private async Task<Dictionary<Guid, IndexIdentity?>> EmbeddingIdentitiesAsync(CancellationToken ct)
     {
         var branches = await db.IndexedBranches.AsNoTracking()
             .Where(b => b.Repository!.IsEnabled && b.EmbeddingModel != null)
-            .Select(b => new { b.Id, b.Repository!.AdoProjectId })
+            .Select(b => new { b.Id, b.BranchName, b.Repository!.AdoRepositoryId, b.Repository.AdoProjectId })
             .ToListAsync(ct);
-        var byProject = new Dictionary<Guid, string?>();
-        var result = new Dictionary<Guid, string?>();
+        var byProject = new Dictionary<Guid, EffectiveModelSettings?>();
+        var result = new Dictionary<Guid, IndexIdentity?>();
         foreach (var b in branches)
         {
-            if (!byProject.TryGetValue(b.AdoProjectId, out var identity))
+            if (!byProject.TryGetValue(b.AdoProjectId, out var settings))
             {
                 try
                 {
-                    var s = await resolver.ResolveAsync(b.AdoProjectId, ct);
-                    identity = $"{s.EmbeddingModelId}|{s.EmbeddingDimensions}|{s.VectorStore}";
+                    settings = await resolver.ResolveAsync(b.AdoProjectId, ct);
                 }
                 catch (SettingsIncompleteException)
                 {
-                    identity = null;
+                    settings = null;
                 }
 
-                byProject[b.AdoProjectId] = identity;
+                byProject[b.AdoProjectId] = settings;
             }
 
-            result[b.Id] = identity;
+            result[b.Id] = settings is null ? null : new IndexIdentity(settings, new RepoBranch(b.AdoRepositoryId, b.BranchName));
         }
 
         return result;
+    }
+
+    private async Task DeleteFromStoreAsync(IndexIdentity old, CancellationToken ct)
+    {
+        try
+        {
+            await vectorStores.Create(old.Settings).DeleteBranchAsync(old.Target, ct);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or SettingsIncompleteException)
+        {
+            logger.LogWarning(ex, "Could not remove {Branch} from the previous vector store; it may need cleaning up by hand", old.Target.Branch);
+        }
     }
 
     private async Task<EffectiveModelSettings> ResolveOrganizationAsync(CancellationToken ct)
@@ -404,6 +429,12 @@ public sealed class AdminService(
             (!Uri.TryCreate(search, UriKind.Absolute, out var searchUri) || searchUri.Scheme != Uri.UriSchemeHttps))
         {
             problems.Add("The Azure AI Search endpoint must be an https:// address.");
+        }
+
+        if (Blank(r.AzureSearchIndexName) is { } indexName &&
+            !System.Text.RegularExpressions.Regex.IsMatch(indexName, "^[a-z0-9][a-z0-9-]{1,127}$"))
+        {
+            problems.Add("The Azure AI Search index name must be 2 to 128 lowercase letters, digits or dashes, starting with a letter or digit.");
         }
 
         if (r.EmbeddingDimensions is < 256 or > 3072)

@@ -6,12 +6,12 @@ your indexed repositories and link to the exact files and lines they used.
 
 Everything runs on infrastructure you host. No GitHub Copilot or Claude is involved.
 
-> **Status: phase 4 of 8 done.** The backend indexes repositories and answers questions about
+> **Status: phase 5 of 8 done.** The backend indexes repositories and answers questions about
 > them. The Azure DevOps extension adds **Repos > Chat with code** (streamed answers with links to
 > the exact lines, diagrams, saved conversations) and settings pages where admins choose the
 > Azure OpenAI deployments and which repositories and branches are indexed. GitHub Actions build
-> and publish the extension. Next: Azure AI Search, automatic re-indexing on push, hardening,
-> and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
+> and publish the extension. The index lives in PostgreSQL (pgvector) or Azure AI Search.
+> Next: automatic re-indexing on push, hardening, and an Azure Container Apps deployment. See [docs/DESIGN.md](docs/DESIGN.md) for the full design and roadmap.
 
 ## Before you start
 
@@ -107,6 +107,20 @@ docker compose run --rm worker status
 Repository             Branch  Status          Files  Chunks  Last indexed          Commit
 Fabrikam/web-app       main    Indexing 64/412 0      0       never                 -
 ```
+
+### Where the index is kept
+
+| Store | Choose when | Setup |
+|---|---|---|
+| **PostgreSQL (pgvector)**, the default | You want everything in the bundled database | Nothing extra. Uses 1,536-dimension embeddings. |
+| **Azure AI Search** | You already use Azure AI Search, want a managed search service, or want larger embeddings (256–3,072 dimensions) | Create a search service (Basic tier or higher). In **Organization settings > Chat with code > Advanced**, choose Azure AI Search and enter the endpoint, an index name and the admin key. The index is created on the first indexing run. |
+
+With managed identity instead of keys, give the backend's identity the **Search Index Data
+Contributor** and **Search Service Contributor** roles on the search service.
+
+Search works the same in both: keyword search (for exact names like `OrderService`) and vector
+search (for meaning), merged into one ranking. Switching store, index or embedding model
+re-indexes the affected branches automatically and removes them from the old store.
 
 ### What gets indexed
 
@@ -287,7 +301,7 @@ nesting (for example `AzureDevOps__Organization`).
 | `AzureDevOps:ServicePrincipal:TenantId` / `ClientId` / `ClientSecret` | Yes, to index | — | How the backend reads repositories |
 | `ConnectionStrings:Metadata` | Yes | set by compose | PostgreSQL connection |
 | `AzureOpenAI:Endpoint`, `ApiKey`, `UseManagedIdentity`, `EmbeddingDeployment`, `ChatDeployment`, `EmbeddingDimensions` | First start | dimensions 1536 | Starting organization defaults (saved once) |
-| `VectorStore:Kind` | No | `PgVector` | `AzureAISearch` arrives in phase 5 |
+| `VectorStore:Kind`, `AzureSearchEndpoint`, `AzureSearchIndexName`, `AzureSearchApiKey` | First start | `PgVector` | Starting vector store (saved once, then managed in Azure DevOps) |
 | `Indexing:MaxFileSizeKb` | No | 500 | Larger files are skipped |
 | `Indexing:ExcludeGlobs` | No | — | Extra skip rules for every repository (`.gitignore` syntax) |
 | `Indexing:PollingEnabled` / `PollIntervalMinutes` | No | true / 5 | Check for new commits when push notifications can't reach the backend (phase 6) |
@@ -336,5 +350,6 @@ src/backend/
   ChatWithCode.AzureDevOps/           Git REST client (service principal) and user checks (user token)
   ChatWithCode.AzureOpenAI/           embeddings and streaming chat
   ChatWithCode.VectorStores.PgVector/ pgvector store with hybrid search
+  ChatWithCode.VectorStores.AzureAISearch/ Azure AI Search store (native hybrid search)
   tests/ChatWithCode.Tests/           unit and integration tests
 ```

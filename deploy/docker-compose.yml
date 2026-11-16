@@ -41,6 +41,10 @@ services:
       AzureOpenAI__UseManagedIdentity: ${AZURE_OPENAI_USE_MANAGED_IDENTITY:-false}
       AzureOpenAI__EmbeddingDeployment: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
       AzureOpenAI__ChatDeployment: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-}
+      VectorStore__Kind: ${VECTOR_STORE:-PgVector}
+      VectorStore__AzureSearchEndpoint: ${AZURE_SEARCH_ENDPOINT:-}
+      VectorStore__AzureSearchIndexName: ${AZURE_SEARCH_INDEX:-}
+      VectorStore__AzureSearchApiKey: ${AZURE_SEARCH_API_KEY:-}
       Indexing__MaxFileSizeKb: ${INDEX_MAX_FILE_KB:-500}
       Chat__RetentionDays: ${CHAT_RETENTION_DAYS:-30}
       Admin__Users: ${CHAT_ADMINS:-}

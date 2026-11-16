@@ -18,6 +18,7 @@
     <ProjectReference Include="..\ChatWithCode.AzureDevOps\ChatWithCode.AzureDevOps.csproj" />
     <ProjectReference Include="..\ChatWithCode.AzureOpenAI\ChatWithCode.AzureOpenAI.csproj" />
     <ProjectReference Include="..\ChatWithCode.VectorStores.PgVector\ChatWithCode.VectorStores.PgVector.csproj" />
+    <ProjectReference Include="..\ChatWithCode.VectorStores.AzureAISearch\ChatWithCode.VectorStores.AzureAISearch.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ChatWithCode.Tests" />

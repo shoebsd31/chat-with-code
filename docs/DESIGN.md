@@ -1,6 +1,6 @@
 # Chat with Code for Azure DevOps — Design
 
-Status: **Approved** · Phases 1–4 built · Last updated: 2026-11-16
+Status: **Approved** · Phases 1–5 built · Last updated: 2026-11-16
 
 ## 1. Goal
 
@@ -184,8 +184,11 @@ trigger ─► fetch ─► filter ─► chunk ─► embed ─► upsert ─�
 2. **Hybrid search** over the allowed repos and branches:
    - **pgvector:** HNSW cosine search plus Postgres full-text search (`tsvector`), merged
      with reciprocal rank fusion.
-   - **Azure AI Search:** native hybrid query (vector + BM25), plus the semantic ranker if
-     the customer has it enabled.
+   - **Azure AI Search:** native hybrid query (BM25 over content, symbol and path, plus HNSW
+     cosine vectors), merged by the service with reciprocal rank fusion and pre-filtered to the
+     allowed branches. Each branch has a filter-safe key (repository id plus a hash of the branch
+     name), since branch names can contain any character. Uses `Azure.Search.Documents` 11.7
+     (the established 11.x API; 12.0 is a later upgrade). The semantic ranker isn't used yet.
 3. **Pick context:** take the top chunks, merge neighbouring chunks from the same file and
    fit them within a token budget (default 8,000 tokens).
 4. **Prompt:** answer only from the sources, cite them as `[1]`, `[2]`…, and say clearly when
@@ -298,7 +301,7 @@ README.md                           setup guide
 | 3 | Chat API | Hybrid retrieval, prompt, streaming answers with citations, saved history |
 | 4a | Extension: chat | "Chat with code" hub (repo picker, streaming chat, sources, Mermaid, history), connection test page, packaging, GitHub Actions publishing |
 | 4b | Extension: admin settings | Organization and project model settings; which repositories and branches to index; re-index button |
-| 5 | Azure AI Search | Second vector store adapter |
+| 5 | Azure AI Search | Second vector store: index created automatically, hybrid search, settings form, clean-up of the old store when switching |
 | 6 | Auto re-index | Service hook receiver, polling fallback, branch selection, index status UI |
 | 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
 | 8 | Azure Container Apps | Bicep template: Container Apps (API + worker), Azure Database for PostgreSQL Flexible Server with pgvector, encryption key ring in Blob Storage protected by Key Vault, managed identity for Azure OpenAI, HTTPS ingress |

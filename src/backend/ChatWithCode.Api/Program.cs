@@ -13,6 +13,7 @@ using ChatWithCode.Core.Indexing;
 using ChatWithCode.Core.Options;
 using ChatWithCode.Data;
 using ChatWithCode.Data.Settings;
+using ChatWithCode.VectorStores.AzureAISearch;
 using ChatWithCode.VectorStores.PgVector;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -45,6 +46,7 @@ builder.Services.AddOptions<ChatOptions>()
 builder.Services.AddChatWithCodeData(builder.Configuration);
 builder.Services.AddAzureDevOps();
 builder.Services.AddPgVectorStore();
+builder.Services.AddAzureAISearchStore();
 builder.Services.AddScoped<IVectorStoreFactory, KeyedVectorStoreFactory>();
 builder.Services.AddSingleton<IEmbedderFactory>(new AzureOpenAIEmbedderFactory());
 builder.Services.AddSingleton<IChatModelFactory>(new AzureOpenAIChatModelFactory());

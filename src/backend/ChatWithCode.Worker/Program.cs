@@ -5,6 +5,7 @@ using ChatWithCode.Core.Indexing;
 using ChatWithCode.Core.Indexing.Chunking;
 using ChatWithCode.Core.Options;
 using ChatWithCode.Data;
+using ChatWithCode.VectorStores.AzureAISearch;
 using ChatWithCode.VectorStores.PgVector;
 using ChatWithCode.Worker;
 using ChatWithCode.Worker.Cli;
@@ -41,6 +42,7 @@ builder.Services.AddOptions<ChatOptions>()
 builder.Services.AddChatWithCodeData(builder.Configuration);
 builder.Services.AddAzureDevOps();
 builder.Services.AddPgVectorStore();
+builder.Services.AddAzureAISearchStore();
 builder.Services.AddSingleton<IEmbedderFactory>(new AzureOpenAIEmbedderFactory());
 builder.Services.AddScoped<IVectorStoreFactory, KeyedVectorStoreFactory>();
 builder.Services.AddSingleton<ITokenCounter, Cl100kTokenCounter>();

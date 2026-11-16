@@ -272,3 +272,5 @@ a.source:hover { background: var(--cwc-hover); }
 .branch-options { max-height: 260px; overflow-y: auto; border: 1px solid var(--cwc-border); border-radius: 4px; padding: 4px; }
 .branch-editor .actions { margin-top: 0; }
 .filter { margin: 4px 0 6px; }
+.subsection { border-top: 1px solid var(--cwc-border); padding-top: 12px; display: grid; gap: 12px; }
+.subsection h3 { font-size: 13px; margin: 0; }

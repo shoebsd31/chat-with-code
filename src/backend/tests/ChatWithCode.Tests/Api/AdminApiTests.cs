@@ -188,6 +188,47 @@ public sealed class AdminApiTests(PostgresFixture postgres)
         Assert.Equal(1, changed!.ReindexQueued);
     }
 
+    [Fact]
+    public async Task Moving_to_another_vector_store_reindexes_and_clears_the_old_store()
+    {
+        await using var app = await AdminApp.CreateAsync(postgres);
+        await app.Admin.PutAsJsonAsync(Url("/api/admin/settings"), OrgSettings("org-key-12345"));
+        await app.Admin.PutAsJsonAsync(Url($"/api/admin/repositories/{app.Ado.Repository.Id}/branches"), new SetBranchesRequest(["main"]));
+        var main = new RepoBranch(app.Ado.Repository.Id, "refs/heads/main");
+        await using (var db = app.Db.NewContext())
+        {
+            await db.IndexJobs.ExecuteDeleteAsync();
+            await db.IndexedBranches.ExecuteUpdateAsync(s => s
+                .SetProperty(b => b.Status, BranchIndexStatus.Ready)
+                .SetProperty(b => b.EmbeddingModel, "azure-openai:contoso.openai.azure.com/text-embedding-3-small")
+                .SetProperty(b => b.EmbeddingDimensions, 1536));
+            await new PgVectorStore(db).UpsertAsync([new CodeChunk("x", main, "a.cs", "csharp", 1, 1, null, "class A {}", "c", new float[1536])], CancellationToken.None);
+        }
+
+        var moved = await app.Admin.PutAsJsonAsync(Url("/api/admin/settings"), OrgSettings(null) with
+        {
+            VectorStore = "AzureAISearch",
+            AzureSearchEndpoint = "https://contoso-search.search.windows.net",
+            AzureSearchIndexName = "chat-with-code",
+            AzureSearchApiKey = "search-key-123456",
+        });
+
+        Assert.Equal(1, (await moved.Content.ReadFromJsonAsync<SaveSettingsResponse>())!.ReindexQueued);
+        await using var check = app.Db.NewContext();
+        Assert.False(await check.CodeChunks.AnyAsync()); // the pgvector copy is gone
+    }
+
+    [Fact]
+    public async Task Invalid_search_index_name_is_explained()
+    {
+        await using var app = await AdminApp.CreateAsync(postgres);
+
+        var response = await app.Admin.PutAsJsonAsync(Url("/api/admin/settings"), OrgSettings("k") with { VectorStore = "AzureAISearch", AzureSearchIndexName = "Code_Chunks" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("lowercase letters, digits or dashes", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
     private static SaveSettingsRequest OrgSettings(string? apiKey) => new(
         "https://contoso.openai.azure.com/", "gpt-6-luna", "text-embedding-3-small", 1536, false, apiKey, "PgVector", null, null, null);
 

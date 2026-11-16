@@ -13,6 +13,10 @@ interface Form {
   apiKey: string;
   removeKey: boolean;
   vectorStore: string;
+  searchEndpoint: string;
+  searchIndex: string;
+  searchKey: string;
+  removeSearchKey: boolean;
 }
 
 function toForm(s: ModelSettings | null, isProject: boolean): Form {
@@ -25,6 +29,10 @@ function toForm(s: ModelSettings | null, isProject: boolean): Form {
     apiKey: "",
     removeKey: false,
     vectorStore: s?.vectorStore ?? (isProject ? "" : "PgVector"),
+    searchEndpoint: s?.azureSearchEndpoint ?? "",
+    searchIndex: s?.azureSearchIndexName ?? "",
+    searchKey: "",
+    removeSearchKey: false,
   };
 }
 
@@ -38,9 +46,9 @@ function toRequest(f: Form): SaveSettings {
     useManagedIdentity: f.auth === "inherit" ? null : f.auth === "identity",
     apiKey: f.removeKey ? "" : f.apiKey.trim() === "" ? null : f.apiKey.trim(),
     vectorStore: text(f.vectorStore),
-    azureSearchEndpoint: null,
-    azureSearchIndexName: null,
-    azureSearchApiKey: null,
+    azureSearchEndpoint: text(f.searchEndpoint),
+    azureSearchIndexName: text(f.searchIndex),
+    azureSearchApiKey: f.removeSearchKey ? "" : f.searchKey.trim() === "" ? null : f.searchKey.trim(),
   };
 }
 
@@ -97,7 +105,10 @@ export function ModelSettingsCard({ api, projectId, projectName }: { api: Api; p
   };
   const inherited = (value: string | number | null | undefined, fallback: string) => (isProject ? (value ? `Organization: ${value}` : "Organization default not set") : fallback);
   const dirty = JSON.stringify(toRequest(form)) !== JSON.stringify(toRequest(toForm(stored, isProject)));
-  const embeddingChanged = form.embedding.trim() !== (stored.embeddingDeployment ?? "") || form.dimensions.trim() !== (stored.embeddingDimensions?.toString() ?? "");
+  const embeddingChanged =
+    form.embedding.trim() !== (stored.embeddingDeployment ?? "") ||
+    form.dimensions.trim() !== (stored.embeddingDimensions?.toString() ?? "") ||
+    form.vectorStore !== (stored.vectorStore ?? (isProject ? "" : "PgVector"));
 
   const save = async () => {
     setSaving(true);
@@ -149,7 +160,7 @@ export function ModelSettingsCard({ api, projectId, projectName }: { api: Api; p
 
   return (
     <section className="card" aria-labelledby="models-heading">
-      <h2 id="models-heading">{isProject ? `Azure OpenAI for ${projectName ?? "this project"}` : "Azure OpenAI"}</h2>
+      <h2 id="models-heading">{isProject ? `Azure OpenAI and index for ${projectName ?? "this project"}` : "Azure OpenAI and index"}</h2>
       <p>{isProject ? "Leave a field empty to use the organization setting." : "Defaults for every project. Projects can override them in Project settings."}</p>
 
       {readOnly && (
@@ -210,7 +221,7 @@ export function ModelSettingsCard({ api, projectId, projectName }: { api: Api; p
         <details className="advanced">
           <summary>Advanced</summary>
           <div className="grid2">
-            <Field label="Embedding dimensions" hint="The PostgreSQL store needs 1536.">
+            <Field label="Embedding dimensions" hint="PostgreSQL needs 1536; Azure AI Search accepts 256–3072.">
               {(id) => <input id={id} type="number" min={256} max={3072} value={form.dimensions} onChange={(e) => set("dimensions", e.target.value)} placeholder={inherited(org.embeddingDimensions, "1536")} />}
             </Field>
             <Field label="Vector store" hint="Where the index is kept.">
@@ -218,19 +229,47 @@ export function ModelSettingsCard({ api, projectId, projectName }: { api: Api; p
                 <select id={id} value={form.vectorStore} onChange={(e) => set("vectorStore", e.target.value)}>
                   {isProject && <option value="">Organization setting</option>}
                   <option value="PgVector">PostgreSQL (pgvector)</option>
-                  <option value="AzureAISearch" disabled>
-                    Azure AI Search (coming soon)
-                  </option>
+                  <option value="AzureAISearch">Azure AI Search</option>
                 </select>
               )}
             </Field>
           </div>
         </details>
 
+        {(form.vectorStore === "AzureAISearch" || (form.vectorStore === "" && org.vectorStore === "AzureAISearch")) && (
+          <div className="subsection">
+            <h3>Azure AI Search</h3>
+            <div className="grid2">
+              <Field label="Search endpoint" hint="e.g. https://your-search.search.windows.net">
+                {(id) => <input id={id} type="url" value={form.searchEndpoint} onChange={(e) => set("searchEndpoint", e.target.value)} placeholder={inherited(org.azureSearchEndpoint, "https://your-search.search.windows.net")} />}
+              </Field>
+              <Field label="Index name" hint="Created automatically on the first indexing run.">
+                {(id) => <input id={id} value={form.searchIndex} onChange={(e) => set("searchIndex", e.target.value)} placeholder={inherited(org.azureSearchIndexName, "chat-with-code")} />}
+              </Field>
+            </div>
+            {form.auth === "identity" || (form.auth === "inherit" && org.useManagedIdentity) ? (
+              <span className="field-hint">Uses the managed identity, which needs the Search Index Data Contributor and Search Service Contributor roles.</span>
+            ) : (
+              <Field label="Search admin key" hint={stored.azureSearchApiKey.isSet ? (readOnly ? `A key is saved (${stored.azureSearchApiKey.hint}).` : `Saved (${stored.azureSearchApiKey.hint}). Leave empty to keep it.`) : isProject && org.azureSearchApiKey.isSet ? "Uses the organization key." : "No key saved."}>
+                {(id) => (
+                  <div className="row">
+                    <input id={id} type="password" autoComplete="off" value={form.searchKey} onChange={(e) => set("searchKey", e.target.value)} placeholder={stored.azureSearchApiKey.isSet ? "••••••••••••" : "Paste the admin key"} disabled={form.removeSearchKey} />
+                    {stored.azureSearchApiKey.isSet && (
+                      <label className="check">
+                        <input type="checkbox" checked={form.removeSearchKey} onChange={(e) => set("removeSearchKey", e.target.checked)} /> Remove
+                      </label>
+                    )}
+                  </div>
+                )}
+              </Field>
+            )}
+          </div>
+        )}
+
         {embeddingChanged && (stored.embeddingDeployment || isProject) && (
           <div className="notice warn">
             <Icon name="warn" />
-            <div className="grow">Changing the embedding model re-indexes every affected branch from scratch. Answers use the old index until that finishes.</div>
+            <div className="grow">Changing the embedding model or the vector store re-indexes every affected branch from scratch. Answers may be incomplete until that finishes.</div>
           </div>
         )}
       </fieldset>
