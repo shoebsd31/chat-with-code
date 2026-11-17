@@ -4,8 +4,9 @@
 name: Extension CI
 
 on:
+  # Every pull request, without a path filter: main requires this check, and a required check
+  # that never starts would block the pull request forever.
   pull_request:
-    paths: ["src/extension/**", ".github/workflows/extension-*.yml"]
   push:
     branches: [main]
     paths: ["src/extension/**", ".github/workflows/extension-*.yml"]

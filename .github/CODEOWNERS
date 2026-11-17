@@ -1,0 +1,7 @@
+# Every change needs the maintainer's review (enforced by the "Require review from Code Owners"
+# rule on main). Workflows and infrastructure can deploy to Azure and publish the extension,
+# so they're listed separately to make that explicit.
+*                  @shoebsd31
+/.github/          @shoebsd31
+/infra/            @shoebsd31
+/deploy/           @shoebsd31
