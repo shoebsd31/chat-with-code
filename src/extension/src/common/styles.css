@@ -134,6 +134,7 @@ button { font: inherit; color: inherit; }
 a.cite:hover { background: var(--cwc-accent); color: var(--cwc-accent-text); }
 .mermaid-block { margin: 0 0 10px; padding: 12px; border: 1px solid var(--cwc-border); border-radius: var(--cwc-radius); overflow-x: auto; background: var(--cwc-surface); }
 .mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-toolbar { display: flex; justify-content: flex-end; margin: -4px -4px 4px 0; }
 .mermaid-error { margin: 0 0 6px; color: var(--cwc-text-2); font-size: 12px; }
 .cursor { display: inline-block; width: 7px; height: 15px; background: var(--cwc-text-2); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }

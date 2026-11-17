@@ -1,4 +1,4 @@
-const paths = {
+export const iconPaths = {
   chat: "M4 5h16v10H9l-5 4V5z",
   plus: "M12 5v14M5 12h14",
   send: "M4 12l16-8-6 16-2-7-8-1z",
@@ -16,12 +16,12 @@ const paths = {
   search: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM16 16l4 4",
 } as const;
 
-export type IconName = keyof typeof paths;
+export type IconName = keyof typeof iconPaths;
 
 export function Icon({ name, label }: { name: IconName; label?: string }) {
   return (
     <svg className="icon" viewBox="0 0 24 24" aria-hidden={label ? undefined : true} role={label ? "img" : undefined} aria-label={label}>
-      <path d={paths[name]} />
+      <path d={iconPaths[name]} />
     </svg>
   );
 }
