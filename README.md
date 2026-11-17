@@ -465,3 +465,9 @@ src/backend/
   ChatWithCode.VectorStores.AzureAISearch/ Azure AI Search store (native hybrid search)
   tests/ChatWithCode.Tests/           unit and integration tests
 ```
+
+## Contributing, security and license
+
+Contributions are welcome as pull requests from forks; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Report security problems privately as described in [SECURITY.md](SECURITY.md).
+Licensed under the [MIT License](LICENSE).
