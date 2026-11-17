@@ -13,9 +13,15 @@ public sealed class IndexJobQueue(ChatWithCodeDbContext db, TimeProvider clock)
 {
     /// <summary>
     /// Queue work for a branch. If a job for the branch is already waiting, that job is reused
-    /// (a full re-index wins over an incremental one) instead of piling up duplicates.
+    /// (a full re-index wins over an incremental one, and a push or admin trigger over the periodic
+    /// check) instead of piling up duplicates.
     /// </summary>
-    public async Task<IndexJob> EnqueueAsync(Guid indexedBranchId, IndexJobType type, string? targetCommit = null, CancellationToken cancellationToken = default)
+    public async Task<IndexJob> EnqueueAsync(
+        Guid indexedBranchId,
+        IndexJobType type,
+        string? targetCommit = null,
+        IndexJobTrigger trigger = IndexJobTrigger.Admin,
+        CancellationToken cancellationToken = default)
     {
         var waiting = await db.IndexJobs
             .AsNoTracking()
@@ -27,11 +33,13 @@ public sealed class IndexJobQueue(ChatWithCodeDbContext db, TimeProvider clock)
         {
             waiting.Type = type == IndexJobType.Full ? IndexJobType.Full : waiting.Type;
             waiting.TargetCommit = targetCommit ?? waiting.TargetCommit;
+            waiting.Trigger = waiting.Trigger == IndexJobTrigger.Poll ? trigger : waiting.Trigger;
             await db.IndexJobs
                 .Where(j => j.Id == waiting.Id && j.State == IndexJobState.Queued)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(j => j.Type, waiting.Type)
-                    .SetProperty(j => j.TargetCommit, waiting.TargetCommit), cancellationToken);
+                    .SetProperty(j => j.TargetCommit, waiting.TargetCommit)
+                    .SetProperty(j => j.Trigger, waiting.Trigger), cancellationToken);
             return waiting;
         }
 
@@ -41,6 +49,7 @@ public sealed class IndexJobQueue(ChatWithCodeDbContext db, TimeProvider clock)
             Id = Guid.CreateVersion7(),
             IndexedBranchId = indexedBranchId,
             Type = type,
+            Trigger = trigger,
             TargetCommit = targetCommit,
             CreatedAt = now,
             AvailableAt = now,

@@ -11,4 +11,5 @@ public sealed record IndexJobContext(
     Guid IndexedBranchId,
     Domain.IndexJobType Type,
     int Attempt,
-    string? TargetCommit);
+    string? TargetCommit,
+    Domain.IndexJobTrigger Trigger = Domain.IndexJobTrigger.Admin);

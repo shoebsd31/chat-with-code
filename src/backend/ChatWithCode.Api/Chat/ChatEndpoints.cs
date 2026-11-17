@@ -35,7 +35,7 @@ public static class ChatEndpoints
             return repos.Select(r => new RepositoryDto(
                 r.AdoRepositoryId, r.AdoProjectId, r.ProjectName, r.Name,
                 r.Branches.OrderByDescending(b => b.IsDefault).ThenBy(b => b.BranchName)
-                    .Select(b => new BranchDto(b.BranchName, b.IsDefault, b.Status.ToString(), b.LastIndexedAt, b.FileCount, b.ProgressDone, b.ProgressTotal))
+                    .Select(b => new BranchDto(b.BranchName, b.IsDefault, b.Status.ToString(), b.LastIndexedAt, b.FileCount, b.ProgressDone, b.ProgressTotal, b.SuggestedQuestions))
                     .ToList())).ToList();
         });
 

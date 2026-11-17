@@ -103,7 +103,7 @@ public static partial class PushWebhookEndpoint
                     continue;
                 }
 
-                await queue.EnqueueAsync(branch.Id, IndexJobType.Incremental, newCommit, ct);
+                await queue.EnqueueAsync(branch.Id, IndexJobType.Incremental, newCommit, IndexJobTrigger.Push, ct);
                 queued++;
             }
 

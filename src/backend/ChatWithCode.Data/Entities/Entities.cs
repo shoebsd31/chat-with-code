@@ -82,6 +82,12 @@ public sealed class IndexedBranch
 
     /// <summary>Files the running index job has to process.</summary>
     public int ProgressTotal { get; set; }
+
+    /// <summary>Starter questions for the empty chat, written by the chat model from the README.</summary>
+    public List<string>? SuggestedQuestions { get; set; }
+
+    /// <summary>What the questions were written from ("readme:&lt;blob id&gt;" or "layout:&lt;hash&gt;"), so they're only rewritten when it changes.</summary>
+    public string? SuggestionsSource { get; set; }
 }
 
 /// <summary>
@@ -95,6 +101,12 @@ public sealed class IndexedFile
     public required string Path { get; set; }
     public required string BlobId { get; set; }
     public int ChunkCount { get; set; }
+
+    /// <summary>
+    /// The splitter version that cut this file (ChunkerSelector.LatestVersion at the time). Files cut with
+    /// an older version than their language needs are re-split once, on a run started by a push or an admin.
+    /// </summary>
+    public int SplitterVersion { get; set; } = 1;
 
     /// <summary>Set when the file was looked at but not indexed (binary, not UTF-8, …).</summary>
     public string? SkipReason { get; set; }
@@ -130,6 +142,7 @@ public sealed class IndexJob
     public Guid IndexedBranchId { get; set; }
     public IndexedBranch? IndexedBranch { get; set; }
     public IndexJobType Type { get; set; }
+    public IndexJobTrigger Trigger { get; set; }
     public IndexJobState State { get; set; } = IndexJobState.Queued;
     public int Attempts { get; set; }
     public int MaxAttempts { get; set; } = 3;

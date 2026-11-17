@@ -11,7 +11,16 @@ const repositories: Repository[] = [
     project: "Fabrikam",
     name: "web-app",
     branches: [
-      { name: "refs/heads/main", isDefault: true, status: "Ready", lastIndexedAt: new Date().toISOString(), fileCount: 412, progressDone: 0, progressTotal: 0 },
+      {
+        name: "refs/heads/main", isDefault: true, status: "Ready", lastIndexedAt: new Date().toISOString(), fileCount: 412, progressDone: 0, progressTotal: 0,
+        suggestedQuestions: [
+          "How does OrderService validate and submit an order?",
+          "Where is the OrderSubmitted event published?",
+          "How do I run the web app and its tests locally?",
+          "Draw a diagram of the checkout flow from basket to payment.",
+          "Which settings does the payments client read?",
+        ],
+      },
       { name: "refs/heads/release/2.0", isDefault: false, status: "Indexing", lastIndexedAt: null, fileCount: 0, progressDone: 128, progressTotal: 398 },
     ],
   },
@@ -35,6 +44,7 @@ const citations: Citation[] = [
   cite(1, "src/Orders/OrderService.cs", 18, 44, "Fabrikam.Orders.OrderService.SubmitAsync"),
   cite(2, "src/Orders/OrderRepository.cs", 30, 52, "Fabrikam.Orders.OrderRepository.SaveAsync"),
   cite(3, "docs/architecture.md", 1, 24, "Architecture > Orders"),
+  cite(4, "src/Api/appsettings.json", 3, 9, "ServiceBus"),
 ];
 
 const answer = `Orders are saved by **\`OrderRepository.SaveAsync\`**, which \`OrderService.SubmitAsync\` calls after validating the order [1].
@@ -49,7 +59,7 @@ await _db.SaveChangesAsync(ct);
 await tx.CommitAsync(ct);
 \`\`\`
 
-3. An \`OrderSubmitted\` event is then published for the payments service [3].
+3. An \`OrderSubmitted\` event is then published for the payments service [3], on the Service Bus configured in settings [4].
 
 \`\`\`mermaid
 sequenceDiagram

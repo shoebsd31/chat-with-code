@@ -112,6 +112,8 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
             e.Property(x => x.SkipReason).HasMaxLength(32);
         });
 
+        modelBuilder.Entity<IndexedBranch>(e => e.Property(x => x.SuggestionsSource).HasMaxLength(100));
+
         modelBuilder.Entity<CodeChunkRecord>(e =>
         {
             e.ToTable("code_chunks");

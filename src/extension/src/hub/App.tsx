@@ -2,15 +2,34 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, type Api, type ChatTarget, type ConversationSummary, type Repository } from "../common/api";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
+import { ExportMenu } from "./ExportMenu";
 import { MessageView, type ChatItem } from "./MessageView";
 import { isSearchable, RepoPicker, targetKey } from "./RepoPicker";
 
-const examples = [
-  "How is authentication implemented?",
-  "Where are orders saved to the database?",
-  "Draw a diagram of how a request flows through the API.",
-  "What does the README say about running locally?",
+/** Shown until the selected repositories have starter questions of their own. */
+export const generalExamples = [
+  "What does this repository do?",
+  "How is the code organized?",
+  "How do I run it locally?",
+  "Draw a diagram of how a request flows through the code.",
 ];
+
+/**
+ * Starter questions for the selected repositories and branches: taken in turn from each, so
+ * several repositories are all represented. Falls back to general examples.
+ */
+export function starterQuestions(repositories: Repository[], targets: ChatTarget[], max = 5): string[] {
+  const lists = targets
+    .map((t) => repositories.find((r) => r.id === t.repositoryId)?.branches.find((b) => b.name === t.branch)?.suggestedQuestions ?? [])
+    .filter((list) => list.length > 0);
+  const picked: string[] = [];
+  for (let i = 0; picked.length < max && lists.some((list) => i < list.length); i++) {
+    for (const list of lists) {
+      if (i < list.length && picked.length < max && !picked.includes(list[i])) picked.push(list[i]);
+    }
+  }
+  return picked.length > 0 ? picked : generalExamples;
+}
 
 type LoadState = { kind: "loading" } | { kind: "ready" } | { kind: "error"; error: ApiError };
 
@@ -271,6 +290,15 @@ export function App({ host, api }: { host: Host; api: Api }) {
             <Icon name="menu" />
           </button>
           <RepoPicker repositories={repositories} selected={targets} onChange={setTargets} disabled={busy} />
+          <ExportMenu
+            disabled={busy || !items.some((i) => i.role === "assistant" && i.content)}
+            input={{
+              title: conversations.find((c) => c.id === conversationId)?.title ?? items.find((i) => i.role === "user")?.content ?? "Conversation",
+              items,
+              repositories,
+              targets,
+            }}
+          />
         </div>
 
         <div className="scroll" ref={scroller} onScroll={onScroll}>
@@ -284,7 +312,7 @@ export function App({ host, api }: { host: Host; api: Api }) {
                 <>
                   <p className="muted">Answers come only from the repositories you pick above, with links to the exact lines.</p>
                   <div className="examples">
-                    {examples.map((q) => (
+                    {starterQuestions(repositories, targets).map((q) => (
                       <button type="button" key={q} className="example" onClick={() => void ask(q)}>
                         {q}
                       </button>

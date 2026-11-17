@@ -27,6 +27,19 @@ public enum IndexJobType
     Incremental,
 }
 
+/// <summary>What started an index job. Runs started by the periodic check never re-split unchanged files.</summary>
+public enum IndexJobTrigger
+{
+    /// <summary>An admin (settings page, command line, enabling a branch).</summary>
+    Admin,
+
+    /// <summary>An Azure DevOps push notification.</summary>
+    Push,
+
+    /// <summary>The periodic check for new commits.</summary>
+    Poll,
+}
+
 public enum IndexJobState
 {
     Queued,

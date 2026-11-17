@@ -3,6 +3,7 @@ import type { Citation } from "../common/api";
 import { CopyButton } from "../common/CopyButton";
 import { Icon } from "../common/Icon";
 import { renderAnswer, renderMermaid } from "../common/markdown";
+import { groupSources } from "../common/sources";
 import { shortBranch } from "./RepoPicker";
 
 export interface ChatItem {
@@ -77,39 +78,63 @@ function AssistantMessage({ item, onRetry }: { item: ChatItem; onRetry?(): void 
   );
 }
 
+const kindIcons = { code: "code", docs: "doc", config: "settings" } as const;
+
+/**
+ * The sources under an answer. When they're of more than one kind, they're grouped into
+ * Code, Docs and Config, each with a count; the numbers still match the [n] markers in the answer.
+ */
 function Sources({ citations, found }: { citations: Citation[]; found: boolean }) {
+  const groups = groupSources(citations);
+  const grouped = groups.length > 1;
   return (
     <div className="sources">
       <div className="sources-head">
         <Icon name="file" />
         {found ? "Sources" : "Closest files (the answer wasn't found in them)"}
+        <span className="muted count">{citations.length}</span>
       </div>
-      <ol>
-        {citations.map((c) => {
-          const lines = c.startLine === c.endLine ? `line ${c.startLine}` : `lines ${c.startLine}–${c.endLine}`;
-          const meta = [lines, c.symbol, c.repository && `${c.repository} · ${shortBranch(c.branch)}`].filter(Boolean).join("  ·  ");
-          const content = (
-            <>
-              <span className="cite n">{c.number}</span>
-              <span className="path" title={c.path}>
-                {c.path}
-              </span>
-              <span className="meta">{meta}</span>
-            </>
-          );
-          return (
-            <li key={`${c.number}-${c.path}`}>
-              {c.url ? (
-                <a className="source" href={c.url} target="_blank" rel="noopener noreferrer" title="Open in Azure DevOps">
-                  {content}
-                </a>
-              ) : (
-                <div className="source">{content}</div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {groups.map((group) => (
+        <section key={group.kind} className="source-group" aria-label={grouped ? `${group.label}: ${group.citations.length}` : undefined}>
+          {grouped && (
+            <div className="source-group-head">
+              <Icon name={kindIcons[group.kind]} />
+              {group.label}
+              <span className="count">{group.citations.length}</span>
+            </div>
+          )}
+          <ol>
+            {group.citations.map((c) => (
+              <SourceItem key={`${c.number}-${c.path}`} citation={c} />
+            ))}
+          </ol>
+        </section>
+      ))}
     </div>
+  );
+}
+
+function SourceItem({ citation: c }: { citation: Citation }) {
+  const lines = c.startLine === c.endLine ? `line ${c.startLine}` : `lines ${c.startLine}–${c.endLine}`;
+  const meta = [lines, c.symbol, c.repository && `${c.repository} · ${shortBranch(c.branch)}`].filter(Boolean).join("  ·  ");
+  const content = (
+    <>
+      <span className="cite n">{c.number}</span>
+      <span className="path" title={c.path}>
+        {c.path}
+      </span>
+      <span className="meta">{meta}</span>
+    </>
+  );
+  return (
+    <li>
+      {c.url ? (
+        <a className="source" href={c.url} target="_blank" rel="noopener noreferrer" title="Open in Azure DevOps">
+          {content}
+        </a>
+      ) : (
+        <div className="source">{content}</div>
+      )}
+    </li>
   );
 }

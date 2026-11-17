@@ -166,7 +166,9 @@ public sealed class ChunkerTests
         var selector = new ChunkerSelector(Tokens);
         Assert.IsType<CSharpChunker>(selector.For("csharp"));
         Assert.IsType<MarkdownChunker>(selector.For("markdown"));
-        Assert.IsType<GenericChunker>(selector.For("python"));
+        Assert.IsType<StructuredChunker>(selector.For("python"));
+        Assert.IsType<StructuredChunker>(selector.For("typescript"));
+        Assert.IsType<GenericChunker>(selector.For("yaml"));
     }
 
     private static string Paragraphs(string topic, int count) =>

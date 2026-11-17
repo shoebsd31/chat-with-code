@@ -103,7 +103,7 @@ public sealed class BranchPoller(
 
             if (head != branch.LastIndexedCommit)
             {
-                await queue.EnqueueAsync(branch.Id, IndexJobType.Incremental, head, cancellationToken);
+                await queue.EnqueueAsync(branch.Id, IndexJobType.Incremental, head, IndexJobTrigger.Poll, cancellationToken);
                 queued++;
             }
         }

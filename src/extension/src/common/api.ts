@@ -35,6 +35,8 @@ export interface Branch {
   fileCount: number;
   progressDone: number;
   progressTotal: number;
+  /** Starter questions written from the branch's README (missing until they've been written). */
+  suggestedQuestions?: string[] | null;
 }
 
 export interface Repository {
