@@ -288,8 +288,8 @@ These workflows live in `.github/workflows`:
 
 | Workflow | When | What |
 |---|---|---|
-| **Backend CI** | Every pull request and push to `main` that touches the backend, `infra/`, `deploy/` or a workflow; or **Run workflow** | Builds and runs all backend tests (including the PostgreSQL tests), builds both Docker images, compiles and lints the Bicep templates, and lints the workflows. Nothing is deployed |
-| **Extension CI** | Every pull request and push to `main` that touches the extension; or **Run workflow** | Unit tests and packaging; the `.vsix` is attached to the run |
+| **Backend CI** | Every pull request; pushes to `main` that touch the backend, `infra/`, `deploy/` or a workflow; or **Run workflow** | Builds and runs all backend tests (including the PostgreSQL tests), builds both Docker images, compiles and lints the Bicep templates, and lints the workflows. Nothing is deployed |
+| **Extension CI** | Every pull request; pushes to `main` that touch the extension; or **Run workflow** | Unit tests and packaging; the `.vsix` is attached to the run |
 | **Deploy to Azure** | **Run workflow**, or a tag like `backend-v1.2.0` | See [Deploy to Azure Container Apps](#deploy-to-azure-container-apps) |
 | **Publish extension** | Pushing a tag like `extension-v1.2.0`, or **Run workflow** in the Actions tab | Tests, packages with your backend address, and publishes to the Marketplace as a private extension shared with your organization |
 

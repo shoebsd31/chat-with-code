@@ -1,4 +1,4 @@
-# Builds and tests the backend on every pull request and push to main, or on any branch from the
+# Builds and tests the backend on every pull request and on pushes to main, or on any branch from the
 # Actions tab ("Run workflow"). Nothing is deployed or pushed.
 #
 # - Backend: build, then every test, including the PostgreSQL (pgvector) tests, which run in Docker.
@@ -7,8 +7,9 @@
 name: Backend CI
 
 on:
+  # Every pull request, without a path filter: main requires this check, and a required check
+  # that never starts would block the pull request forever.
   pull_request:
-    paths: ["src/backend/**", "infra/**", "deploy/**", ".github/workflows/**"]
   push:
     branches: [main]
     paths: ["src/backend/**", "infra/**", "deploy/**", ".github/workflows/**"]
