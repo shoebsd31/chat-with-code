@@ -44,6 +44,7 @@ const citations: Citation[] = [
   cite(1, "src/Orders/OrderService.cs", 18, 44, "Fabrikam.Orders.OrderService.SubmitAsync"),
   cite(2, "src/Orders/OrderRepository.cs", 30, 52, "Fabrikam.Orders.OrderRepository.SaveAsync"),
   cite(3, "docs/architecture.md", 1, 24, "Architecture > Orders"),
+  cite(4, "src/Api/appsettings.json", 3, 9, "ServiceBus"),
 ];
 
 const answer = `Orders are saved by **\`OrderRepository.SaveAsync\`**, which \`OrderService.SubmitAsync\` calls after validating the order [1].
@@ -58,7 +59,7 @@ await _db.SaveChangesAsync(ct);
 await tx.CommitAsync(ct);
 \`\`\`
 
-3. An \`OrderSubmitted\` event is then published for the payments service [3].
+3. An \`OrderSubmitted\` event is then published for the payments service [3], on the Service Bus configured in settings [4].
 
 \`\`\`mermaid
 sequenceDiagram

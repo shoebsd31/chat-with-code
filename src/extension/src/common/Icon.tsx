@@ -14,6 +14,10 @@ export const iconPaths = {
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6",
   chevron: "M8 10l4 4 4-4",
   search: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM16 16l4 4",
+  code: "M9 7l-5 5 5 5M15 7l5 5-5 5",
+  doc: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5",
+  settings: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
 } as const;
 
 export type IconName = keyof typeof iconPaths;
