@@ -94,6 +94,7 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<ChatWithCodeDbContext>("database", tags: ["ready"]);
 
 var app = builder.Build();
+app.WarnIfExtensionSecretLooksWrong();
 
 if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
 {
@@ -123,7 +124,7 @@ app.MapGet("/api/info", (IOptions<AzureDevOpsOptions> ado) => new ServiceInfo(
         "Chat with Code",
         typeof(ServiceInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev",
         ado.Value.Organization,
-        ExtensionConnected: !string.IsNullOrWhiteSpace(ado.Value.ExtensionSecret)))
+        ExtensionConnected: ExtensionAuthentication.ReadSecret(app.Configuration) is not null))
     .WithName("GetInfo");
 
 app.MapChatEndpoints();
