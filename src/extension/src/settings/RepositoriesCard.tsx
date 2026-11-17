@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { AdminRepository, Api } from "../common/api";
 import { Icon } from "../common/Icon";
 import { branchStatus, shortBranch } from "../hub/RepoPicker";
@@ -12,6 +12,22 @@ export function RepositoriesCard({ api, projectId, canEdit }: { api: Api; projec
   const [error, setError] = useState<string>();
   const [editing, setEditing] = useState<string>();
   const [filter, setFilter] = useState("");
+  const [confirming, setConfirming] = useState<string>(); // "<repo id>|<branch>" whose rebuild is being confirmed
+  const [sending, setSending] = useState<string>();
+
+  const reindex = async (repositoryId: string, branch: string, full: boolean) => {
+    const key = `${repositoryId}|${branch}`;
+    setSending(key);
+    try {
+      await api.admin.reindex(repositoryId, branch, full);
+      setConfirming(undefined);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSending(undefined);
+    }
+  };
 
   const load = useCallback(() => api.admin.repositories(projectId).then(setRepos).catch((e: Error) => setError(e.message)), [api, projectId]);
 
@@ -82,8 +98,11 @@ export function RepositoriesCard({ api, projectId, canEdit }: { api: Api; projec
                   <tbody>
                     {repo.branches.map((b) => {
                       const status = branchStatus({ ...b, fileCount: b.fileCount });
+                      const key = `${repo.id}|${b.name}`;
+                      const busyRow = sending === key || b.status === "Queued" || b.status === "Indexing";
                       return (
-                        <tr key={b.name}>
+                        <Fragment key={b.name}>
+                        <tr>
                           <td>
                             {shortBranch(b.name)} {b.isDefault && <span className="muted small">default</span>}
                           </td>
@@ -96,17 +115,49 @@ export function RepositoriesCard({ api, projectId, canEdit }: { api: Api; projec
                             {b.lastIndexedAt ? timeAgo(b.lastIndexedAt) : "Never"}
                           </td>
                           {canEdit && (
-                            <td>
-                              <BranchActions
-                                api={api}
-                                repositoryId={repo.id}
-                                branch={b}
-                                onQueued={() => void load()}
-                                onError={setError}
-                              />
+                            <td className="row-actions">
+                              <button
+                                type="button"
+                                className="btn ghost small"
+                                disabled={busyRow}
+                                onClick={() => void reindex(repo.id, b.name, b.status === "Failed")}
+                                title={b.status === "Failed" ? "Index again from scratch" : "Index what changed since the last run"}
+                              >
+                                <Icon name="refresh" /> Re-index
+                              </button>
+                              <button
+                                type="button"
+                                className="btn ghost small"
+                                disabled={busyRow}
+                                aria-expanded={confirming === key}
+                                onClick={() => setConfirming(confirming === key ? undefined : key)}
+                                title="Delete this branch's index and index every file again, e.g. after changing the embedding model or if answers look wrong"
+                              >
+                                Rebuild
+                              </button>
                             </td>
                           )}
                         </tr>
+                        {canEdit && confirming === key && (
+                          <tr className="confirm-row">
+                            <td colSpan={5}>
+                              <div className="notice warn" role="group" aria-label={`Rebuild ${shortBranch(b.name)} from scratch`}>
+                                <Icon name="warn" />
+                                <div className="grow">
+                                  <strong>Rebuild {shortBranch(b.name)} from scratch?</strong> Every file is indexed again, which costs the full indexing fee for this branch.
+                                  Usually Re-index is enough; rebuild after changing the embedding model or if answers look wrong.
+                                </div>
+                                <button type="button" className="btn small danger" onClick={() => void reindex(repo.id, b.name, true)} disabled={sending === key}>
+                                  {sending === key ? "Starting…" : "Rebuild"}
+                                </button>
+                                <button type="button" className="btn ghost small" onClick={() => setConfirming(undefined)} disabled={sending === key}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -117,78 +168,6 @@ export function RepositoriesCard({ api, projectId, canEdit }: { api: Api; projec
         ))}
       </ul>
     </section>
-  );
-}
-
-/**
- * Re-index (only what changed, plus a one-time re-split of files cut by an older splitter) and
- * Rebuild from scratch (every file again), with an inline confirmation for the rebuild.
- */
-function BranchActions({
-  api,
-  repositoryId,
-  branch,
-  onQueued,
-  onError,
-}: {
-  api: Api;
-  repositoryId: string;
-  branch: AdminRepository["branches"][number];
-  onQueued(): void;
-  onError(message: string): void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const [sending, setSending] = useState(false);
-  const busy = sending || branch.status === "Queued" || branch.status === "Indexing";
-
-  const run = async (full: boolean) => {
-    setSending(true);
-    try {
-      await api.admin.reindex(repositoryId, branch.name, full);
-      setConfirming(false);
-      onQueued();
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  if (confirming) {
-    return (
-      <div className="row-confirm" role="group" aria-label={`Rebuild ${shortBranch(branch.name)} from scratch`}>
-        <span className="small">Index every file again? This costs the full indexing fee for this branch.</span>
-        <button type="button" className="btn small danger" onClick={() => void run(true)} disabled={sending}>
-          {sending ? "Starting…" : "Rebuild"}
-        </button>
-        <button type="button" className="btn ghost small" onClick={() => setConfirming(false)} disabled={sending}>
-          Cancel
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="row-actions">
-      <button
-        type="button"
-        className="btn ghost small"
-        disabled={busy}
-        onClick={() => void run(branch.status === "Failed")}
-        title={branch.status === "Failed" ? "Index again from scratch" : "Index what changed since the last run"}
-      >
-        <Icon name="refresh" /> Re-index
-      </button>
-      <button
-        type="button"
-        className="btn ghost small"
-        disabled={busy}
-        onClick={() => setConfirming(true)}
-        title="Delete this branch's index and index every file again, e.g. after changing the embedding model or if answers look wrong"
-      >
-        Rebuild
-      </button>
-    </div>
   );
 }
 
