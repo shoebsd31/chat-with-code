@@ -108,6 +108,61 @@ public sealed class RepositoryIndexerTests(PostgresFixture postgres)
         Assert.Equal(3, (await check.IndexedBranches.SingleAsync()).FileCount);
     }
 
+    [Theory]
+    [InlineData(IndexJobTrigger.Poll, false)]
+    [InlineData(IndexJobTrigger.Push, true)]
+    [InlineData(IndexJobTrigger.Admin, true)]
+    public async Task Files_split_by_an_older_splitter_are_re_split_once_but_not_by_the_periodic_check(IndexJobTrigger trigger, bool resplits)
+    {
+        await using var h = await Harness.CreateAsync(postgres);
+        h.Ado.Commit(new()
+        {
+            ["README.md"] = Readme,
+            ["src/OrderService.cs"] = AppCs,
+            ["web/app.ts"] = "export function submit(order: Order) {\n  return save(order);\n}\n",
+        });
+        await h.RunAsync(IndexJobType.Full);
+
+        // As if indexed before the structure-aware splitter existed.
+        await using (var db = h.Db.NewContext())
+        {
+            await db.IndexedFiles.ExecuteUpdateAsync(s => s.SetProperty(f => f.SplitterVersion, 1));
+        }
+
+        h.Ado.DownloadedPaths.Clear();
+        await h.RunAsync(IndexJobType.Incremental, trigger); // same commit
+
+        // Only the TypeScript file has a newer splitter; C# and Markdown are left alone.
+        Assert.Equal(resplits ? ["web/app.ts"] : [], h.Ado.DownloadedPaths);
+
+        h.Ado.DownloadedPaths.Clear();
+        await h.RunAsync(IndexJobType.Incremental, trigger);
+        Assert.Empty(h.Ado.DownloadedPaths); // never twice
+
+        await using var check = h.Db.NewContext();
+        var app = await check.IndexedFiles.SingleAsync(f => f.Path == "web/app.ts");
+        Assert.Equal(resplits ? ChunkerSelector.LatestVersion : 1, app.SplitterVersion);
+        Assert.Equal("submit", (await check.CodeChunks.SingleAsync(c => c.Path == "web/app.ts")).Symbol);
+    }
+
+    [Fact]
+    public async Task A_changed_file_gets_the_newest_splitter_even_on_a_periodic_run()
+    {
+        await using var h = await Harness.CreateAsync(postgres);
+        h.Ado.Commit(new() { ["web/app.ts"] = "export const a = 1;\n" });
+        await h.RunAsync(IndexJobType.Full);
+        await using (var db = h.Db.NewContext())
+        {
+            await db.IndexedFiles.ExecuteUpdateAsync(s => s.SetProperty(f => f.SplitterVersion, 1));
+        }
+
+        h.Ado.Commit(new() { ["web/app.ts"] = "export const a = 2;\n" });
+        await h.RunAsync(IndexJobType.Incremental, IndexJobTrigger.Poll);
+
+        await using var check = h.Db.NewContext();
+        Assert.Equal(ChunkerSelector.LatestVersion, (await check.IndexedFiles.SingleAsync()).SplitterVersion);
+    }
+
     [Fact]
     public async Task Same_commit_is_not_indexed_twice()
     {
@@ -261,7 +316,7 @@ public sealed class RepositoryIndexerTests(PostgresFixture postgres)
             return h;
         }
 
-        public async Task RunAsync(IndexJobType type)
+        public async Task RunAsync(IndexJobType type, IndexJobTrigger trigger = IndexJobTrigger.Admin)
         {
             await using var db = Db.NewContext();
             var tokens = new Cl100kTokenCounter();
@@ -277,7 +332,7 @@ public sealed class RepositoryIndexerTests(PostgresFixture postgres)
                 Db.Clock,
                 NullLogger<RepositoryIndexer>.Instance);
 
-            await indexer.HandleAsync(new IndexJobContext(Guid.NewGuid(), BranchId, type, 1, null), CancellationToken.None);
+            await indexer.HandleAsync(new IndexJobContext(Guid.NewGuid(), BranchId, type, 1, null, trigger), CancellationToken.None);
         }
 
         public ValueTask DisposeAsync() => Db.DisposeAsync();

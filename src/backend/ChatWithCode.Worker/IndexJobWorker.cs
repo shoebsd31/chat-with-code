@@ -64,7 +64,7 @@ public sealed class IndexJobWorker(
         try
         {
             var handler = scope.ServiceProvider.GetRequiredService<IIndexJobHandler>();
-            await handler.HandleAsync(new IndexJobContext(job.Id, job.IndexedBranchId, job.Type, job.Attempts, job.TargetCommit), cancellationToken);
+            await handler.HandleAsync(new IndexJobContext(job.Id, job.IndexedBranchId, job.Type, job.Attempts, job.TargetCommit, job.Trigger), cancellationToken);
             await queue.CompleteAsync(job.Id, CancellationToken.None);
             logger.LogInformation("Finished index job {JobId}", job.Id);
         }

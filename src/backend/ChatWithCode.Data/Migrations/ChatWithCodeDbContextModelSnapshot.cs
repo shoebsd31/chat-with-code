@@ -269,6 +269,12 @@ namespace ChatWithCode.Data.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("target_commit");
 
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -393,6 +399,10 @@ namespace ChatWithCode.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("skip_reason");
+
+                    b.Property<int>("SplitterVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("splitter_version");
 
                     b.HasKey("Id")
                         .HasName("pk_indexed_files");

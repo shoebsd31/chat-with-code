@@ -26,6 +26,23 @@ public sealed class IndexJobQueueTests(PostgresFixture postgres)
         Assert.Equal(BranchIndexStatus.Queued, (await t.NewContext().IndexedBranches.SingleAsync()).Status);
     }
 
+    [Theory]
+    [InlineData(IndexJobTrigger.Poll, IndexJobTrigger.Push, IndexJobTrigger.Push)]
+    [InlineData(IndexJobTrigger.Poll, IndexJobTrigger.Admin, IndexJobTrigger.Admin)]
+    [InlineData(IndexJobTrigger.Admin, IndexJobTrigger.Poll, IndexJobTrigger.Admin)]
+    [InlineData(IndexJobTrigger.Push, IndexJobTrigger.Poll, IndexJobTrigger.Push)]
+    public async Task A_waiting_job_keeps_the_trigger_that_allows_re_splitting(IndexJobTrigger first, IndexJobTrigger second, IndexJobTrigger expected)
+    {
+        await using var t = await postgres.CreateMigratedDbAsync();
+        var (_, _, main) = await Seed.RepoWithMainAsync(t.Context);
+        var queue = new IndexJobQueue(t.Context, t.Clock);
+
+        await queue.EnqueueAsync(main.Id, IndexJobType.Incremental, "aaa", first);
+        await queue.EnqueueAsync(main.Id, IndexJobType.Incremental, "bbb", second);
+
+        Assert.Equal(expected, (await t.NewContext().IndexJobs.SingleAsync()).Trigger);
+    }
+
     [Fact]
     public async Task Claim_returns_null_when_queue_is_empty()
     {

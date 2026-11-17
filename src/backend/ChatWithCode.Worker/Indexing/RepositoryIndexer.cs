@@ -19,6 +19,8 @@ namespace ChatWithCode.Worker.Indexing;
 /// last run (by blob id), then downloads, chunks, embeds and stores only those, and removes
 /// files that were deleted. Progress is saved after every batch, so a failed job resumes
 /// where it stopped instead of starting over.
+/// Unchanged files that were split by an older splitter version are re-split once, but only on
+/// runs started by a push or an admin, never by the periodic check.
 /// </summary>
 public sealed class RepositoryIndexer(
     ChatWithCodeDbContext db,
@@ -71,11 +73,13 @@ public sealed class RepositoryIndexer(
         }
 
         var full = job.Type == IndexJobType.Full || modelChanged;
+        var resplit = job.Trigger != IndexJobTrigger.Poll;
         var commit = job.TargetCommit
             ?? await ado.GetBranchHeadAsync(repo.AdoRepositoryId, branch.BranchName, cancellationToken)
             ?? throw new InvalidOperationException($"Branch {branch.BranchName} no longer exists in repository {repo.ProjectName}/{repo.Name}.");
 
-        if (!full && branch.LastIndexedCommit == commit && branch.Status != BranchIndexStatus.Failed)
+        if (!full && branch.LastIndexedCommit == commit && branch.Status != BranchIndexStatus.Failed &&
+            !(resplit && await HasOlderSplitsAsync(branch.Id, cancellationToken)))
         {
             logger.LogInformation("{Repository} {Branch} is already indexed at {Commit}", repo.Name, branch.BranchName, Short(commit));
             await SetStatusAsync(branch.Id, BranchIndexStatus.Ready, cancellationToken);
@@ -90,16 +94,32 @@ public sealed class RepositoryIndexer(
         // 2. Compare with what was indexed last time.
         var known = await db.IndexedFiles.AsNoTracking()
             .Where(f => f.IndexedBranchId == branch.Id)
-            .ToDictionaryAsync(f => f.Path, f => f.BlobId, StringComparer.Ordinal, cancellationToken);
+            .Select(f => new { f.Path, f.BlobId, f.SplitterVersion, f.SkipReason })
+            .ToDictionaryAsync(f => f.Path, StringComparer.Ordinal, cancellationToken);
+        var resplitCount = 0;
         var changed = wanted.Values
-            .Where(f => full || !known.TryGetValue(f.Path, out var blob) || blob != f.BlobId)
+            .Where(f =>
+            {
+                if (full || !known.TryGetValue(f.Path, out var k) || k.BlobId != f.BlobId)
+                {
+                    return true;
+                }
+
+                if (resplit && NeedsResplit(f.Path, k.SplitterVersion, k.SkipReason))
+                {
+                    resplitCount++;
+                    return true;
+                }
+
+                return false;
+            })
             .OrderBy(f => f.Path, StringComparer.Ordinal)
             .ToList();
         var removed = known.Keys.Where(p => !wanted.ContainsKey(p)).ToList();
 
         logger.LogInformation(
-            "Indexing {Repository} {Branch} at {Commit} ({Mode}): {Changed} file(s) to process, {Removed} to remove, {Unchanged} unchanged",
-            repo.Name, branch.BranchName, Short(commit), full ? "full" : "incremental", changed.Count, removed.Count, wanted.Count - changed.Count);
+            "Indexing {Repository} {Branch} at {Commit} ({Mode}, started by {Trigger}): {Changed} file(s) to process ({Resplit} re-split with the newer splitter), {Removed} to remove, {Unchanged} unchanged",
+            repo.Name, branch.BranchName, Short(commit), full ? "full" : "incremental", job.Trigger, changed.Count, resplitCount, removed.Count, wanted.Count - changed.Count);
 
         var target = new RepoBranch(repo.AdoRepositoryId, branch.BranchName);
         await db.IndexedBranches.Where(b => b.Id == branch.Id).ExecuteUpdateAsync(s => s
@@ -127,7 +147,15 @@ public sealed class RepositoryIndexer(
                 .ExecuteUpdateAsync(s => s.SetProperty(b => b.ProgressDone, done), cancellationToken);
         }
 
-        // 5. Record the result.
+        // 5. Every remaining file is now split with the newest rules its language has, so record that
+        //    and later runs don't look again. (A periodic run leaves older splits for a push or admin run.)
+        if (resplit)
+        {
+            await db.IndexedFiles.Where(f => f.IndexedBranchId == branch.Id && f.SplitterVersion < ChunkerSelector.LatestVersion)
+                .ExecuteUpdateAsync(s => s.SetProperty(f => f.SplitterVersion, ChunkerSelector.LatestVersion), cancellationToken);
+        }
+
+        // 6. Record the result.
         var totals = await db.IndexedFiles.Where(f => f.IndexedBranchId == branch.Id && f.ChunkCount > 0)
             .GroupBy(_ => 1)
             .Select(g => new { Files = g.Count(), Chunks = g.Sum(f => f.ChunkCount) })
@@ -160,7 +188,11 @@ public sealed class RepositoryIndexer(
         var records = new List<IndexedFile>();
         foreach (var file in files)
         {
-            var record = new IndexedFile { Id = Guid.CreateVersion7(), IndexedBranchId = branchId, Path = file.Path, BlobId = file.BlobId };
+            var record = new IndexedFile
+            {
+                Id = Guid.CreateVersion7(), IndexedBranchId = branchId, Path = file.Path, BlobId = file.BlobId,
+                SplitterVersion = ChunkerSelector.LatestVersion,
+            };
             records.Add(record);
 
             var skip = FileFilter.TryDecode(contents[file.Path], out var text);
@@ -240,6 +272,13 @@ public sealed class RepositoryIndexer(
         var bytes = await ado.GetBlobAsync(repositoryId, entry.BlobId, cancellationToken);
         return FileFilter.TryDecode(bytes, out var text) == SkipReason.None ? text : null;
     }
+
+    /// <summary>Was this file split with older rules than its language has now?</summary>
+    internal static bool NeedsResplit(string path, int splitterVersion, string? skipReason) =>
+        skipReason is null && splitterVersion < ChunkerSelector.VersionFor(LanguageDetector.Detect(path));
+
+    private Task<bool> HasOlderSplitsAsync(Guid branchId, CancellationToken cancellationToken) =>
+        db.IndexedFiles.AnyAsync(f => f.IndexedBranchId == branchId && f.SplitterVersion < ChunkerSelector.LatestVersion && f.SkipReason == null, cancellationToken);
 
     private Task<int> SetStatusAsync(Guid branchId, BranchIndexStatus status, CancellationToken cancellationToken) =>
         db.IndexedBranches.Where(b => b.Id == branchId)

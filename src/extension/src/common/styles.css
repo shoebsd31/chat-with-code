@@ -53,6 +53,8 @@ button { font: inherit; color: inherit; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover:not(:disabled) { background: var(--cwc-hover); }
 .btn.small { padding: 2px 8px; font-size: 12px; }
+.btn.danger { background: var(--cwc-danger); border-color: var(--cwc-danger); color: #fff; }
+.btn.danger:hover:not(:disabled) { filter: brightness(1.08); background: var(--cwc-danger); }
 
 .icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -284,3 +286,6 @@ a.source:hover { background: var(--cwc-hover); }
 .push-status { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
 .push-status li { display: flex; gap: 8px; align-items: center; }
 .push-status .dot { margin-top: 0; }
+
+.row-actions { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+.row-confirm { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; max-width: 360px; margin-left: auto; text-align: right; }

@@ -96,6 +96,12 @@ public sealed class IndexedFile
     public required string BlobId { get; set; }
     public int ChunkCount { get; set; }
 
+    /// <summary>
+    /// The splitter version that cut this file (ChunkerSelector.LatestVersion at the time). Files cut with
+    /// an older version than their language needs are re-split once, on a run started by a push or an admin.
+    /// </summary>
+    public int SplitterVersion { get; set; } = 1;
+
     /// <summary>Set when the file was looked at but not indexed (binary, not UTF-8, …).</summary>
     public string? SkipReason { get; set; }
 }
@@ -130,6 +136,7 @@ public sealed class IndexJob
     public Guid IndexedBranchId { get; set; }
     public IndexedBranch? IndexedBranch { get; set; }
     public IndexJobType Type { get; set; }
+    public IndexJobTrigger Trigger { get; set; }
     public IndexJobState State { get; set; } = IndexJobState.Queued;
     public int Attempts { get; set; }
     public int MaxAttempts { get; set; } = 3;
