@@ -114,13 +114,56 @@ jobs:
           echo "Publishing as Marketplace identity: ${profile:-unknown}"
 
           vsix=$(ls out/*.vsix)
+          extension=$(jq -r .id vss-extension.json)
+          version="${{ steps.version.outputs.version }}"
+
+          # Upload without waiting: the Marketplace then validates (scans) the package, which can take
+          # much longer than tfx is willing to wait. Validation is checked separately below.
+          set -o pipefail # so a failed publish isn't hidden by tee
+          log=$(mktemp)
           if ! npx tfx extension publish --vsix "$vsix" --publisher "$PUBLISHER" --share-with "$SHARE_WITH" \
-               --auth-type pat --token "$token" --no-prompt; then
-            echo "::error::Publishing failed. If this is the first run, add the identity printed above as a Contributor on the publisher (Marketplace > Manage > $PUBLISHER > Members), then run again. Also check that the version is higher than the published one."
+               --auth-type pat --token "$token" --no-prompt --no-wait-validation 2>&1 | tee "$log"; then
+            if grep -qiE "403|Access Denied|permission" "$log"; then
+              echo "::error::The identity above may not publish for '$PUBLISHER'. Add it as a Contributor (Marketplace > Manage > $PUBLISHER > Members), then run again."
+            elif grep -qiE "version.*(exist|greater|higher|increase)" "$log"; then
+              echo "::error::Version $version is already published. Run again with a higher version."
+            else
+              echo "::error::Publishing failed; see the log above."
+            fi
             exit 1
           fi
-          echo "### Published Chat with code ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Shared with **$SHARE_WITH**. Organizations that have it installed update automatically." >> "$GITHUB_STEP_SUMMARY"
+
+          # Wait up to 30 minutes for validation. A new extension can't be installed until it's validated.
+          status=pending; message=""
+          for attempt in $(seq 1 60); do
+            out=$(npx tfx extension isvalid --publisher "$PUBLISHER" --extension-id "$extension" --version "$version" \
+                    --service-url https://marketplace.visualstudio.com/ --auth-type pat --token "$token" --json --no-prompt 2>/dev/null || true)
+            status=$(printf '%s' "$out" | python3 -c 'import sys,json,re; m=re.search(r"\{.*\}", sys.stdin.read(), re.S); print(json.loads(m.group(0)).get("status","unknown") if m else "unknown")')
+            message=$(printf '%s' "$out" | python3 -c 'import sys,json,re; m=re.search(r"\{.*\}", sys.stdin.read(), re.S); print(json.loads(m.group(0)).get("message","") if m else "")')
+            [ "$status" = "pending" ] || [ "$status" = "unknown" ] || break
+            echo "Waiting for the Marketplace to validate version $version (check $attempt of 60)…"
+            sleep 30
+          done
+
+          {
+            case "$status" in
+              success)
+                echo "### Published Chat with code $version"
+                echo "Validated and shared with **$SHARE_WITH**. Organizations that have it installed update automatically. To install it the first time: Organization settings > Extensions > Shared." ;;
+              error)
+                echo "### Chat with code $version failed Marketplace validation"
+                echo "$message" ;;
+              *)
+                echo "### Chat with code $version is uploaded and still being validated"
+                echo "It can be installed once validation finishes. Check the status (a green tick) on https://marketplace.visualstudio.com/manage/publishers/$PUBLISHER" ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "$status" in
+            success) echo "Validated and published." ;;
+            error) echo "::error::The Marketplace rejected version $version: $message. Fix it and publish a higher version."; exit 1 ;;
+            *) echo "::warning::Version $version is uploaded but still being validated after 30 minutes. It becomes installable once the Marketplace finishes; see the run summary." ;;
+          esac
 
       - name: Keep the .vsix with the run
         uses: actions/upload-artifact@v4
