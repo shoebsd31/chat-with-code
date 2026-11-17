@@ -37,6 +37,8 @@ jobs:
           TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           ADO_ORGANIZATION: ${{ vars.ADO_ORGANIZATION }}
+          OPENAI_RESOURCE_ID: ${{ vars.AZURE_OPENAI_RESOURCE_ID }}
+          SEARCH_RESOURCE_ID: ${{ vars.AZURE_SEARCH_RESOURCE_ID }}
         run: |
           missing=()
           [ -n "$CLIENT_ID" ]        || missing+=("AZURE_CLIENT_ID (the deployment app's application/client ID)")
@@ -50,6 +52,20 @@ jobs:
             printf '  - %s\n' "${missing[@]}"
             exit 1
           fi
+
+          # Optional resource ids must be full ids, not just names.
+          bad=0
+          check_id() { # name, value, provider path
+            local value="${2//[[:space:]]/}"
+            [ -z "$value" ] && return 0
+            if ! [[ "$value" =~ ^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/$3/[^/]+$ ]]; then
+              echo "::error::$1 must be a full resource id like /subscriptions/<id>/resourceGroups/<group>/providers/$3/<name> (got '$2'). Copy it from the resource's JSON View in the portal, or delete the variable if you don't use it."
+              bad=1
+            fi
+          }
+          check_id AZURE_OPENAI_RESOURCE_ID "$OPENAI_RESOURCE_ID" "Microsoft.CognitiveServices/accounts"
+          check_id AZURE_SEARCH_RESOURCE_ID "$SEARCH_RESOURCE_ID" "Microsoft.Search/searchServices"
+          [ "$bad" -eq 0 ] || exit 1
 
       - uses: actions/checkout@v4
 
