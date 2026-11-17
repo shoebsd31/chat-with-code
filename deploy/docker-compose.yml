@@ -30,7 +30,9 @@ services:
     ports:
       - "${API_PORT:-8080}:8080"
     environment: &backend-env
-      ConnectionStrings__Metadata: Host=db;Port=5432;Database=chatwithcode;Username=chatwithcode;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
+      ConnectionStrings__Metadata: Host=db;Port=5432;Database=chatwithcode;Username=chatwithcode;GSS Encryption Mode=Disable
+      # The database driver reads the password from PGPASSWORD, so it never appears in the connection string.
+      PGPASSWORD: ${POSTGRES_PASSWORD}
       AzureDevOps__Organization: ${ADO_ORGANIZATION:?Set ADO_ORGANIZATION in .env}
       AzureDevOps__ExtensionSecret: ${ADO_EXTENSION_SECRET:-}
       AzureDevOps__ServicePrincipal__TenantId: ${ADO_SP_TENANT_ID:-}

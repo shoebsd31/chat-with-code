@@ -1,0 +1,24 @@
+# Secret scanning (GitGuardian) configuration.
+#
+# These values look random to a scanner but are not secrets: they are Microsoft's built-in Azure
+# role definition ids, the same in every Azure tenant and listed in Microsoft's documentation
+# (https://learn.microsoft.com/azure/role-based-access-control/built-in-roles).
+version: 2
+secret:
+  ignored_matches:
+    - name: Azure built-in role AcrPull (infra/main.bicep)
+      match: 7f951dda-4ed3-4680-a7ca-43fe172d538d
+    - name: Azure built-in role Key Vault Secrets User (infra/main.bicep)
+      match: 4633458b-17de-408a-b874-0445c86b69e6
+    - name: Azure built-in role Key Vault Secrets Officer (infra/main.bicep)
+      match: b86a8fe4-44ce-4948-aee5-eccb2c155cd7
+    - name: Azure built-in role Key Vault Crypto User (infra/main.bicep)
+      match: 12338af0-0e69-4776-bea7-57ae8d297424
+    - name: Azure built-in role Storage Blob Data Contributor (infra/main.bicep)
+      match: ba92f5b4-2d11-453d-a403-e96b0029c9fe
+    - name: Azure built-in role Cognitive Services OpenAI User (infra/modules/openai-access.bicep)
+      match: 5e0bd9bd-7b93-4f28-af87-19fc36ad61bd
+    - name: Azure built-in role Search Index Data Contributor (infra/modules/search-access.bicep)
+      match: 8ebe5a00-799e-43f5-93ac-243d3dce84a7
+    - name: Azure built-in role Search Service Contributor (infra/modules/search-access.bicep)
+      match: 7ca78c08-252a-4471-8644-bb5ff32d4ba0
