@@ -1,4 +1,5 @@
-# Builds and tests the Azure DevOps extension on every pull request and push to main.
+# Builds and tests the Azure DevOps extension on every pull request and push to main,
+# or on any branch from the Actions tab ("Run workflow").
 # Nothing is published; the packaged .vsix is attached to the run for manual testing.
 name: Extension CI
 
@@ -8,6 +9,7 @@ on:
   push:
     branches: [main]
     paths: ["src/extension/**", ".github/workflows/extension-*.yml"]
+  workflow_dispatch:
 
 permissions:
   contents: read

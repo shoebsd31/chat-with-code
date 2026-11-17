@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Citation } from "../common/api";
+import { CopyButton } from "../common/CopyButton";
 import { Icon } from "../common/Icon";
 import { renderAnswer, renderMermaid } from "../common/markdown";
 import { shortBranch } from "./RepoPicker";
@@ -25,7 +26,6 @@ export function MessageView({ item, onRetry }: { item: ChatItem; onRetry?(): voi
 
 function AssistantMessage({ item, onRetry }: { item: ChatItem; onRetry?(): void }) {
   const body = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
   const citations = useMemo(() => new Map(item.citations.map((c) => [c.number, c])), [item.citations]);
   const html = useMemo(() => renderAnswer(item.content, citations), [item.content, citations]);
 
@@ -33,12 +33,6 @@ function AssistantMessage({ item, onRetry }: { item: ChatItem; onRetry?(): void 
   useEffect(() => {
     if (item.state !== "streaming" && body.current) void renderMermaid(body.current, prefersDark());
   }, [html, item.state]);
-
-  const copy = async () => {
-    await navigator.clipboard.writeText(item.content).catch(() => undefined);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
 
   const waiting = item.state === "streaming" && item.content.length === 0;
   return (
@@ -75,9 +69,7 @@ function AssistantMessage({ item, onRetry }: { item: ChatItem; onRetry?(): void 
 
         {item.state === "done" && item.content && (
           <div className="msg-actions">
-            <button type="button" className="btn ghost small" onClick={copy} aria-label="Copy answer">
-              <Icon name={copied ? "check" : "copy"} /> {copied ? "Copied" : "Copy"}
-            </button>
+            <CopyButton value={item.content} label="Copy answer" />
           </div>
         )}
       </div>

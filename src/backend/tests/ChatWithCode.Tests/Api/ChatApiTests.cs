@@ -49,6 +49,26 @@ public sealed class ChatApiTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Extension_secret_copied_with_stray_spaces_still_works()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres, secret: $"  {Secret}\n");
+
+        using var client = app.Client();
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(Url("/api/me"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Too_short_extension_secret_is_explained()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres, secret: "14-characters!");
+
+        using var client = app.Client();
+        var response = await client.GetAsync(Url("/api/me"));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("too short to be the extension's key", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Requests_need_an_Azure_DevOps_sign_in_that_Azure_DevOps_accepts()
     {
         await using var app = await ChatApp.CreateAsync(postgres);
@@ -276,7 +296,7 @@ public sealed class ChatApiTests(PostgresFixture postgres)
         public TestDb Db { get; }
         public FakeChatModel Model { get; }
 
-        public static async Task<ChatApp> CreateAsync(PostgresFixture postgres, int requestsPerMinute = 100)
+        public static async Task<ChatApp> CreateAsync(PostgresFixture postgres, int requestsPerMinute = 100, string secret = Secret)
         {
             var connectionString = await postgres.CreateDatabaseAsync();
             var model = new FakeChatModel();
@@ -284,7 +304,7 @@ public sealed class ChatApiTests(PostgresFixture postgres)
             var factory = new WebApplicationFactory<ServiceInfo>().WithWebHostBuilder(b => b
                 .UseSetting("ConnectionStrings:Metadata", connectionString)
                 .UseSetting("AzureDevOps:Organization", "contoso")
-                .UseSetting("AzureDevOps:ExtensionSecret", Secret)
+                .UseSetting("AzureDevOps:ExtensionSecret", secret)
                 .UseSetting("AzureOpenAI:Endpoint", "https://contoso.openai.azure.com/")
                 .UseSetting("AzureOpenAI:ApiKey", "key")
                 .UseSetting("AzureOpenAI:EmbeddingDeployment", "text-embedding-3-small")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AdminRepository, Api, PushSetup } from "../common/api";
+import { CopyButton } from "../common/CopyButton";
 import { Icon } from "../common/Icon";
 import { timeAgo } from "./RepositoriesCard";
 
@@ -107,22 +108,10 @@ export function UpdatesCard({ api, projectId, canEdit }: { api: Api; projectId: 
 }
 
 function Copy({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <span className="copy-row">
       <code className="mono">{value}</code>
-      <button
-        type="button"
-        className="btn ghost small"
-        aria-label={`Copy ${value}`}
-        onClick={async () => {
-          await navigator.clipboard.writeText(value).catch(() => undefined);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-      >
-        <Icon name={copied ? "check" : "copy"} /> {copied ? "Copied" : "Copy"}
-      </button>
+      <CopyButton value={value} label={`Copy ${value}`} />
     </span>
   );
 }

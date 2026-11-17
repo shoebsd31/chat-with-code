@@ -53,6 +53,18 @@ jobs:
             exit 1
           fi
 
+          # Resource names are built from the prefix and only allow lowercase letters and digits
+          # in places, so keep just those (infra/main.bicep does the same).
+          prefix=$(printf '%s' "$NAME_PREFIX" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+          if ! [[ "$prefix" =~ ^[a-z][a-z0-9]{2,11}$ ]]; then
+            echo "::error::NAME_PREFIX must be 3-12 lowercase letters and digits, starting with a letter (e.g. chatcode). Got '$NAME_PREFIX'."
+            exit 1
+          fi
+          if [ "$prefix" != "$NAME_PREFIX" ]; then
+            echo "::notice::Using '$prefix' as the name prefix (NAME_PREFIX is '$NAME_PREFIX'; resource names allow only lowercase letters and digits)."
+          fi
+          echo "NAME_PREFIX=$prefix" >> "$GITHUB_ENV"
+
           # Optional resource ids must be full ids, not just names.
           bad=0
           check_id() { # name, value, provider path

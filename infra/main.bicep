@@ -57,20 +57,25 @@ param postgresSkuName string = 'Standard_B1ms'
 param postgresTier string = 'Burstable'
 param postgresVersion string = '16'
 
+// Resource names allow different characters (the registry and storage account only lowercase letters
+// and digits, container apps no "--"), so keep just lowercase letters and digits from the prefix.
+var prefix = toLower(replace(replace(replace(replace(namePrefix, '-', ''), '_', ''), '.', ''), ' ', ''))
 var suffix = uniqueString(resourceGroup().id, namePrefix)
 var names = {
-  identity: '${namePrefix}-id'
-  logs: '${namePrefix}-logs'
-  environment: '${namePrefix}-env'
-  registry: toLower('${namePrefix}acr${suffix}')
-  vault: take(toLower('${namePrefix}-kv-${suffix}'), 24)
-  storage: take(toLower('${namePrefix}st${suffix}'), 24)
-  postgres: toLower('${namePrefix}-pg-${suffix}')
-  api: '${namePrefix}-api'
-  worker: '${namePrefix}-worker'
+  identity: '${prefix}-id'
+  logs: '${prefix}-logs'
+  environment: '${prefix}-env'
+  registry: '${prefix}acr${suffix}'
+  vault: take('${prefix}-kv-${suffix}', 24)
+  storage: take('${prefix}st${suffix}', 24)
+  postgres: '${prefix}-pg-${suffix}'
+  api: '${prefix}-api'
+  worker: '${prefix}-worker'
 }
 var databaseName = 'chatwithcode'
 
+// Built-in Azure role definition ids. These are public and the same in every Azure tenant
+// (https://learn.microsoft.com/azure/role-based-access-control/built-in-roles), not secrets.
 var roles = {
   acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
   keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
