@@ -292,20 +292,27 @@ resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@202
 
 // ---------------- Optional access to existing AI resources ----------------
 
+// Azure resolves a module's scope even when its condition is false, so an empty id must still
+// split into enough parts: fall back to this resource group. (The workflow rejects ids that aren't
+// full resource ids before deploying.)
+var placeholderId = '${resourceGroup().id}/providers/none/none/none'
+var openAIIdParts = split(empty(azureOpenAIResourceId) ? placeholderId : azureOpenAIResourceId, '/')
+var searchIdParts = split(empty(azureSearchResourceId) ? placeholderId : azureSearchResourceId, '/')
+
 module openAIAccess 'modules/openai-access.bicep' = if (!empty(azureOpenAIResourceId)) {
   name: 'openai-access'
-  scope: resourceGroup(split(azureOpenAIResourceId, '/')[2], split(azureOpenAIResourceId, '/')[4])
+  scope: resourceGroup(openAIIdParts[2], openAIIdParts[4])
   params: {
-    accountName: last(split(azureOpenAIResourceId, '/'))
+    accountName: last(openAIIdParts)
     principalId: identity.properties.principalId
   }
 }
 
 module searchAccess 'modules/search-access.bicep' = if (!empty(azureSearchResourceId)) {
   name: 'search-access'
-  scope: resourceGroup(split(azureSearchResourceId, '/')[2], split(azureSearchResourceId, '/')[4])
+  scope: resourceGroup(searchIdParts[2], searchIdParts[4])
   params: {
-    serviceName: last(split(azureSearchResourceId, '/'))
+    serviceName: last(searchIdParts)
     principalId: identity.properties.principalId
   }
 }
