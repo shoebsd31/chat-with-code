@@ -148,8 +148,17 @@ It prints `Healthy`.
 
 In Azure DevOps, open **Project settings > Chat with code**. Under **Repositories**, select
 **Index** (or **Change branches**) on a repository, pick branches, and **Save**. Indexing runs in
-the background and the page shows progress. **Re-index** picks up changes since the last run
-(or starts over after a failure).
+the background and the page shows progress. Each branch has two buttons:
+
+- **Re-index** picks up changes since the last run (or starts over after a failure). It also
+  re-splits, once, files that were indexed with an older version of the code splitter.
+- **Rebuild** (with a confirmation) indexes every file of the branch again. It costs the full
+  indexing fee for the branch; use it after changing the embedding model or if answers look wrong.
+
+After a branch is indexed, the chat model writes 4–5 **starter questions** from its README and
+top-level folders; they appear as clickable suggestions in the empty chat. They are rewritten only
+when the README changes (one small model call each time), and the worker fills them in at start
+for branches indexed before this existed.
 
 Only people listed in `CHAT_ADMINS` can change settings; everyone else sees them read-only.
 Admins are kept in the backend's configuration on purpose: they can't be changed from Azure
@@ -223,9 +232,20 @@ tests/fixtures/
 !build/
 ```
 
-Files are split into chunks before embedding: small files stay whole, markdown is split by
-heading, C# by class and method, and other languages at blank lines, all under about
-1,500 tokens per chunk.
+Files are split into chunks before embedding, each under about 1,500 tokens. Small files stay
+whole. Bigger files are split along their structure, so a function or method is never cut in half
+and each chunk is named after it (for example `OrderService.submit`):
+
+| Language | Split by |
+|---|---|
+| C# | classes and members (Roslyn) |
+| TypeScript/JavaScript, Python, Java, Go, Kotlin, Rust, C/C++, PHP, Swift, Scala, Dart, Groovy | classes, functions and methods |
+| Markdown | headings |
+| Everything else | blank lines |
+
+If a file's structure can't be read reliably, it's split at blank lines instead. When the splitter
+improves, already indexed files are re-split once by the next run started by a push notification
+or by **Re-index**, never by the scheduled checks.
 
 ## Package the extension
 
@@ -264,11 +284,13 @@ and never contacts a backend. `npm test` runs the unit tests.
 
 ## Publish with GitHub Actions
 
-Two workflows live in `.github/workflows`:
+These workflows live in `.github/workflows`:
 
 | Workflow | When | What |
 |---|---|---|
-| **Extension CI** | Every pull request and push to `main` that touches the extension | Unit tests and packaging; the `.vsix` is attached to the run |
+| **Backend CI** | Every pull request and push to `main` that touches the backend, `infra/`, `deploy/` or a workflow; or **Run workflow** | Builds and runs all backend tests (including the PostgreSQL tests), builds both Docker images, compiles and lints the Bicep templates, and lints the workflows. Nothing is deployed |
+| **Extension CI** | Every pull request and push to `main` that touches the extension; or **Run workflow** | Unit tests and packaging; the `.vsix` is attached to the run |
+| **Deploy to Azure** | **Run workflow**, or a tag like `backend-v1.2.0` | See [Deploy to Azure Container Apps](#deploy-to-azure-container-apps) |
 | **Publish extension** | Pushing a tag like `extension-v1.2.0`, or **Run workflow** in the Actions tab | Tests, packages with your backend address, and publishes to the Marketplace as a private extension shared with your organization |
 
 Publishing signs in as a Microsoft Entra app using GitHub's OIDC token (workload identity

@@ -83,7 +83,12 @@ hosts.
   - `SDK.getAccessToken()` as `X-AzureDevOps-Token`: the user's own ADO token. The backend
     never decodes it; see 3.2.
 - **Mermaid:** the `mermaid` library is bundled into the extension and renders
-  ```` ```mermaid ```` blocks in answers.
+  ```` ```mermaid ```` blocks in answers. Each diagram can be copied as Mermaid source or
+  downloaded as a PNG (drawn on a canvas; if the frame blocks the download, the image can be
+  opened in a new tab).
+- **Answers:** sources grouped into Code, Docs and Config when there's more than one kind; the
+  whole conversation can be copied or downloaded as Markdown (citations linked, diagrams kept as
+  Mermaid). The empty chat suggests the selected branches' starter questions.
 
 ### 3.2 API (`ChatWithCode.Api`)
 
@@ -143,9 +148,23 @@ trigger ─► fetch ─► filter ─► chunk ─► embed ─► upsert ─�
 **Chunk**
 - **Markdown:** split by headings. Each chunk keeps its heading path.
 - **C#:** split by type and member using **Roslyn**.
-- **Other languages (v1):** splits at blank lines, merging blocks up to the limit; blocks too
+- **TypeScript/JavaScript, Python, Java, Go, Kotlin, Rust, C/C++, PHP, Swift, Scala, Dart,
+  Groovy:** split by class, function and method (`StructuredChunker`), named like
+  `OrderService.submit`. No native parser: brace languages are scanned with strings, comments,
+  regex literals, JSX text and annotations skipped; Python uses indentation. Doc comments,
+  annotations and decorators stay with their declaration. A file whose structure can't be read
+  reliably (unbalanced braces) falls back to blank-line splitting.
+- **Other languages:** splits at blank lines, merging blocks up to the limit; blocks too
   big on their own are cut into windows with a 3-line overlap. The first declaration
   (class, function, …) names the chunk.
+- **Re-splitting:** each indexed file records the splitter version that cut it, and each index
+  job records what started it (admin, push notification, scheduled check). When a language's
+  splitter improves, files indexed with an older version are re-split once, by the next run
+  started by a push or an admin, never by a scheduled check. **Rebuild** (settings page)
+  re-indexes a whole branch.
+- **Starter questions:** after a successful run, the chat model writes 4–5 questions from the
+  README and top-level folders (`QuestionSuggester`), stored per branch and rewritten only when
+  the README changes. Failures never fail indexing. The worker fills in missing ones at start.
 - Files at or under the limit (about 1,500 tokens, counted with the cl100k tokenizer the
   embedding models use) stay whole.
 - The embedded text is a short header (file, language, symbol) plus the chunk, which helps
@@ -247,12 +266,12 @@ OpenRouter, Ollama/vLLM) can share one OpenAI-compatible adapter.
 | `organizations` | ADO org id/name, backend config |
 | `settings` | scope (org/project), provider + vector store config, encrypted secrets |
 | `repositories` | ADO repo id, project, name, default branch, enabled |
-| `indexed_branches` | repo, branch, last indexed commit, status, counts, last error |
-| `index_jobs` | queue: repo/branch, type (full/incremental), state, attempts, timestamps |
+| `indexed_branches` | repo, branch, last indexed commit, status, counts, last error, starter questions and what they were written from |
+| `index_jobs` | queue: repo/branch, type (full/incremental), trigger (admin/push/poll), state, attempts, timestamps |
 | `conversations` | user id, title, selected repos/branches, created/updated |
 | `messages` | conversation, role, content, model, token counts |
 | `citations` | message, repo, branch, path, line range, score |
-| `indexed_files` | per branch: path, blob id last indexed, chunk count, skip reason |
+| `indexed_files` | per branch: path, blob id last indexed, chunk count, splitter version, skip reason |
 | `code_chunks` (pgvector only) | metadata + `embedding vector(1536)` (HNSW, cosine) + generated `search_vector tsvector` over path, symbol and content (GIN, `simple` config) |
 
 The job queue uses Postgres (`SELECT … FOR UPDATE SKIP LOCKED`), so self-hosting needs no
@@ -305,6 +324,7 @@ README.md                           setup guide
 | 6 | Auto re-index | "Code pushed" service hook endpoint (basic auth, set up by admins with guided steps), scheduled checks (0 = once at start, configurable), last-notification status |
 | 7 | Hardening | Tests, README setup guide, how to publish the extension privately |
 | 8 | Azure Container Apps | `infra/main.bicep` + `deploy-azure.yml`: Container Apps (API with public HTTPS + worker), one user-assigned managed identity for PostgreSQL (Entra-only), Key Vault, Storage (key ring), ACR, Azure DevOps and Azure OpenAI / AI Search; images built with `az acr build`; GitHub OIDC, no GitHub secrets; Key Vault holds the only two secrets |
+| 9 | Improvements | Backend CI; structure-aware splitting for 12 more languages with one-time re-splitting and Rebuild; starter questions from the README; sources grouped into Code/Docs/Config; export a conversation as Markdown; download diagrams as PNG |
 
 ## 6. Testing limits in this environment
 
