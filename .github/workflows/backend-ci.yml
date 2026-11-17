@@ -1,0 +1,83 @@
+# Builds and tests the backend on every pull request and push to main, or on any branch from the
+# Actions tab ("Run workflow"). Nothing is deployed or pushed.
+#
+# - Backend: build, then every test, including the PostgreSQL (pgvector) tests, which run in Docker.
+# - Docker images: builds the api and worker images, so a broken Dockerfile fails here, not in a deploy.
+# - Infrastructure: compiles and lints the Bicep templates, and lints every workflow file.
+name: Backend CI
+
+on:
+  pull_request:
+    paths: ["src/backend/**", "infra/**", "deploy/**", ".github/workflows/**"]
+  push:
+    branches: [main]
+    paths: ["src/backend/**", "infra/**", "deploy/**", ".github/workflows/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/backend/global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      # The database tests start a pgvector container with Testcontainers (Docker is on the runner).
+      - name: Test
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=results.trx" --results-directory ../../test-results
+
+      - name: Attach test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: test-results
+          retention-days: 14
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the api and worker images
+        run: |
+          for target in api worker; do
+            docker build --target "$target" --tag "chat-with-code-$target:ci" --file src/backend/Dockerfile src/backend
+          done
+
+  infrastructure:
+    name: Bicep and workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile and lint the Bicep templates
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep lint --file infra/main.bicep
+
+      - name: Lint the workflows
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
