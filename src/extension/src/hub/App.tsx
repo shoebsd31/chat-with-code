@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, type Api, type ChatTarget, type ConversationSummary, type Repository } from "../common/api";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
+import { ExportMenu } from "./ExportMenu";
 import { MessageView, type ChatItem } from "./MessageView";
 import { isSearchable, RepoPicker, targetKey } from "./RepoPicker";
 
@@ -289,6 +290,15 @@ export function App({ host, api }: { host: Host; api: Api }) {
             <Icon name="menu" />
           </button>
           <RepoPicker repositories={repositories} selected={targets} onChange={setTargets} disabled={busy} />
+          <ExportMenu
+            disabled={busy || !items.some((i) => i.role === "assistant" && i.content)}
+            input={{
+              title: conversations.find((c) => c.id === conversationId)?.title ?? items.find((i) => i.role === "user")?.content ?? "Conversation",
+              items,
+              repositories,
+              targets,
+            }}
+          />
         </div>
 
         <div className="scroll" ref={scroller} onScroll={onScroll}>
