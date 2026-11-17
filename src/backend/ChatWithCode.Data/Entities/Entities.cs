@@ -82,6 +82,12 @@ public sealed class IndexedBranch
 
     /// <summary>Files the running index job has to process.</summary>
     public int ProgressTotal { get; set; }
+
+    /// <summary>Starter questions for the empty chat, written by the chat model from the README.</summary>
+    public List<string>? SuggestedQuestions { get; set; }
+
+    /// <summary>What the questions were written from ("readme:&lt;blob id&gt;" or "layout:&lt;hash&gt;"), so they're only rewritten when it changes.</summary>
+    public string? SuggestionsSource { get; set; }
 }
 
 /// <summary>

@@ -32,7 +32,8 @@ public sealed class RepositoryIndexer(
     ChunkerSelector chunkers,
     IOptions<IndexingOptions> options,
     TimeProvider clock,
-    ILogger<RepositoryIndexer> logger) : IIndexJobHandler
+    ILogger<RepositoryIndexer> logger,
+    QuestionSuggester? suggester = null) : IIndexJobHandler
 {
     /// <summary>Files processed between progress saves.</summary>
     internal const int FilesPerBatch = 32;
@@ -173,6 +174,12 @@ public sealed class RepositoryIndexer(
 
         logger.LogInformation("Indexed {Repository} {Branch} at {Commit} in {Seconds:F1}s: {Files} files, {Chunks} chunks",
             repo.Name, branch.BranchName, Short(commit), stopwatch.Elapsed.TotalSeconds, totals?.Files ?? 0, totals?.Chunks ?? 0);
+
+        // 7. Starter questions for the empty chat (only when the README changed; never fails the job).
+        if (suggester is not null)
+        {
+            await suggester.EnsureAsync(branch.Id, tree, cancellationToken);
+        }
     }
 
     private async Task IndexBatchAsync(

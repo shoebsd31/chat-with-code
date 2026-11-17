@@ -45,7 +45,9 @@ public sealed record CitationDto(
 
 public sealed record MeDto(string Id, string DisplayName, bool IsAdmin);
 
-public sealed record BranchDto(string Name, bool IsDefault, string Status, DateTimeOffset? LastIndexedAt, int FileCount, int ProgressDone, int ProgressTotal);
+public sealed record BranchDto(
+    string Name, bool IsDefault, string Status, DateTimeOffset? LastIndexedAt, int FileCount, int ProgressDone, int ProgressTotal,
+    IReadOnlyList<string>? SuggestedQuestions = null);
 
 public sealed record RepositoryDto(Guid Id, Guid ProjectId, string Project, string Name, IReadOnlyList<BranchDto> Branches);
 

@@ -11,7 +11,16 @@ const repositories: Repository[] = [
     project: "Fabrikam",
     name: "web-app",
     branches: [
-      { name: "refs/heads/main", isDefault: true, status: "Ready", lastIndexedAt: new Date().toISOString(), fileCount: 412, progressDone: 0, progressTotal: 0 },
+      {
+        name: "refs/heads/main", isDefault: true, status: "Ready", lastIndexedAt: new Date().toISOString(), fileCount: 412, progressDone: 0, progressTotal: 0,
+        suggestedQuestions: [
+          "How does OrderService validate and submit an order?",
+          "Where is the OrderSubmitted event published?",
+          "How do I run the web app and its tests locally?",
+          "Draw a diagram of the checkout flow from basket to payment.",
+          "Which settings does the payments client read?",
+        ],
+      },
       { name: "refs/heads/release/2.0", isDefault: false, status: "Indexing", lastIndexedAt: null, fileCount: 0, progressDone: 128, progressTotal: 398 },
     ],
   },
