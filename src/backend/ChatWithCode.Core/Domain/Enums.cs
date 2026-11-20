@@ -40,6 +40,19 @@ public enum IndexJobTrigger
     Poll,
 }
 
+/// <summary>What a model call recorded in the usage ledger was for.</summary>
+public enum UsageKind
+{
+    /// <summary>Answering a question (counts towards the user's allowance).</summary>
+    Answer,
+
+    /// <summary>Rewriting a follow-up question for search (counts towards the user's allowance).</summary>
+    Rewrite,
+
+    /// <summary>Writing a branch's starter questions (organization usage, no user).</summary>
+    StarterQuestions,
+}
+
 public enum IndexJobState
 {
     Queued,

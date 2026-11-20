@@ -56,6 +56,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<UserAccessService>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<AdminService>();
+builder.Services.AddScoped<UsageAdminService>();
 builder.Services.AddExtensionAuthentication(builder.Configuration);
 
 // Per-user limit on chat requests (each one costs model tokens).

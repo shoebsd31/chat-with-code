@@ -111,6 +111,13 @@ hosts.
 - **Streaming:** the chat endpoint returns Server-Sent Events. Events are `conversation`,
   `delta`, `citations`, `done` and `error`.
 - **Rate limit:** 20 questions per user per minute by default (`Chat:RequestsPerMinute`).
+- **Usage allowances:** every chat model call goes into a usage ledger (`UsageLedger`): answers and
+  follow-up rewrites per user, starter questions as organization usage. Admins set prices per
+  million input/output tokens for each chat deployment, a currency label, a monthly allowance per
+  user (off by default) and per-user allowances. Cost is worked out when read, from token counts and
+  current prices. Before a question, non-admins over their monthly allowance or the daily cap
+  (`Chat:DailyCapPercent`, 20% of the monthly allowance) get `429` with the reset time. Missing token
+  counts (model didn't report them, answer stopped midway) are counted with the tokenizer.
 - **CORS:** allows only the extension's hosting origins.
 
 ### 3.3 Indexer (`ChatWithCode.Worker`)
@@ -270,6 +277,9 @@ OpenRouter, Ollama/vLLM) can share one OpenAI-compatible adapter.
 | `index_jobs` | queue: repo/branch, type (full/incremental), trigger (admin/push/poll), state, attempts, timestamps |
 | `conversations` | user id, title, selected repos/branches, created/updated |
 | `messages` | conversation, role, content, model, token counts |
+| `usage_records` | one per chat model call: user (or none), project, model, kind (answer/rewrite/starter questions), input/output tokens, time. Kept 13 months, independently of conversations |
+| `usage_settings` | per organization: currency, monthly allowance per user, prices per chat deployment (JSON) |
+| `user_allowances` | a user's own monthly allowance |
 | `citations` | message, repo, branch, path, line range, score |
 | `indexed_files` | per branch: path, blob id last indexed, chunk count, splitter version, skip reason |
 | `code_chunks` (pgvector only) | metadata + `embedding vector(1536)` (HNSW, cosine) + generated `search_vector tsvector` over path, symbol and content (GIN, `simple` config) |

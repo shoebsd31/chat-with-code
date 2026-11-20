@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, type Api, type ChatTarget, type ConversationSummary, type Repository } from "../common/api";
+import { ApiError, type Api, type ChatTarget, type ConversationSummary, type MyUsage, type Repository } from "../common/api";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
 import { ExportMenu } from "./ExportMenu";
 import { MessageView, type ChatItem } from "./MessageView";
 import { isSearchable, RepoPicker, targetKey } from "./RepoPicker";
+import { usageNote } from "./usageNote";
 
 /** Shown until the selected repositories have starter questions of their own. */
 export const generalExamples = [
@@ -83,6 +84,13 @@ export function App({ host, api }: { host: Host; api: Api }) {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  // The user's allowance: loaded at start and refreshed after every answer. Failures are ignored (it's only a hint).
+  const [usage, setUsage] = useState<MyUsage | null>(null);
+  const refreshUsage = useCallback(() => {
+    api.myUsage().then(setUsage, () => undefined);
+  }, [api]);
+  useEffect(() => refreshUsage(), [refreshUsage]);
 
   useEffect(() => {
     try {
@@ -207,6 +215,7 @@ export function App({ host, api }: { host: Host; api: Api }) {
       setBusy(false);
       abort.current = null;
       textarea.current?.focus();
+      refreshUsage();
     }
   };
 
@@ -339,6 +348,15 @@ export function App({ host, api }: { host: Host; api: Api }) {
         </div>
 
         <div className="composer-wrap">
+          {(() => {
+            const note = usageNote(usage);
+            return note ? (
+              <div className={`usage-note ${note.tone}`} role="status">
+                {note.tone !== "info" && <Icon name="warn" />}
+                {note.text}
+              </div>
+            ) : null;
+          })()}
           <form
             className="composer"
             onSubmit={(e) => {

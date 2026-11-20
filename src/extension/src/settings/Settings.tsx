@@ -3,6 +3,7 @@ import type { Api, Me, ServiceInfo } from "../common/api";
 import { ModelSettingsCard } from "./ModelSettingsCard";
 import { RepositoriesCard } from "./RepositoriesCard";
 import { UpdatesCard } from "./UpdatesCard";
+import { UsageCard } from "./UsageCard";
 import type { Host } from "../common/host";
 import { Icon } from "../common/Icon";
 
@@ -25,6 +26,7 @@ export function Settings({ host, api, scope }: { host: Host; api: Api; scope: "o
       {me && projectId && <RepositoriesCard api={api} projectId={projectId} canEdit={me.isAdmin} />}
       {me && projectId && <UpdatesCard api={api} projectId={projectId} canEdit={me.isAdmin} />}
       {me && <ModelSettingsCard api={api} projectId={projectId} projectName={host.context.projectName} />}
+      {me?.isAdmin && scope === "organization" && <UsageCard api={api} />}
       <ConnectionCard host={host} api={api} onUser={setMe} />
     </div>
   );

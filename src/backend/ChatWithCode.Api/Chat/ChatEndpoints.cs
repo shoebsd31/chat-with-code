@@ -23,6 +23,10 @@ public static class ChatEndpoints
             return new MeDto(access.User.Id, access.User.DisplayName, access.IsAdmin);
         });
 
+        // The user's own usage against their allowance, as percentages.
+        api.MapGet("/me/usage", (HttpContext http, Admin.UsageAdminService usage, CancellationToken ct) =>
+            usage.MineAsync(http.GetUserAccess(), ct));
+
         // Indexed repositories this user can read, for the repository picker.
         api.MapGet("/repositories", async (HttpContext http, ChatWithCodeDbContext db, CancellationToken ct) =>
         {

@@ -210,3 +210,63 @@ public sealed class Citation
     /// <summary>True when the answer cited this source; false for "closest files" shown when nothing was found.</summary>
     public bool Used { get; set; }
 }
+
+/// <summary>
+/// One chat model call, for usage allowances and the admin usage report. Kept separately from chat
+/// history (which users can delete and which expires), so deleting a conversation doesn't reset usage.
+/// </summary>
+public sealed class UsageRecord
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+
+    /// <summary>Azure DevOps user id; null for organization usage such as starter questions.</summary>
+    public string? UserId { get; set; }
+    public string? UserName { get; set; }
+    public Guid? ProjectId { get; set; }
+
+    /// <summary>The chat deployment that answered (prices are set per deployment).</summary>
+    public required string Model { get; set; }
+    public UsageKind Kind { get; set; }
+    public int InputTokens { get; set; }
+    public int OutputTokens { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Usage allowance settings for the organization. No row, or no allowance, means no limit.</summary>
+public sealed class UsageSettings
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+
+    /// <summary>Currency the prices and allowances are entered in. Only a label: nothing is converted.</summary>
+    public string Currency { get; set; } = "USD";
+
+    /// <summary>Monthly allowance per user, in <see cref="Currency"/>. Null turns limits off.</summary>
+    public decimal? MonthlyAllowance { get; set; }
+
+    /// <summary>Price per million tokens for each chat deployment.</summary>
+    public List<ModelPrice> Prices { get; set; } = [];
+
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
+public sealed class ModelPrice
+{
+    public required string Model { get; set; }
+    public decimal InputPerMillion { get; set; }
+    public decimal OutputPerMillion { get; set; }
+}
+
+/// <summary>A user's own monthly allowance, instead of the organization's.</summary>
+public sealed class UserAllowance
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public required string UserId { get; set; }
+    public string? UserName { get; set; }
+    public decimal MonthlyAllowance { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}

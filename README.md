@@ -185,6 +185,27 @@ Repository             Branch  Status          Files  Chunks  Last indexed      
 Fabrikam/web-app       main    Indexing 64/412 0      0       never                 -
 ```
 
+### Usage and limits
+
+Every answer is recorded with its token counts (also the extra call that rewrites follow-up
+questions, and starter questions as organization usage). Records are kept for 13 months,
+separately from chat history, so deleting a conversation doesn't reset anyone's usage.
+
+In **Organization settings > Chat with code > Usage and limits** (admins only) you can:
+
+- see spending for any of the last 12 months: estimated cost, questions, people and tokens;
+- enter each chat model's **price per million input and output tokens**, and the **currency**
+  (a label; nothing is converted). Costs are worked out from the token counts with the current
+  prices, so prices entered later apply to the current month too;
+- set a **monthly allowance per user**. It's off by default. Once set, each user may also spend at
+  most 20% of it in one day (`CHAT_DAILY_CAP_PERCENT`). Both reset in UTC (monthly on the 1st);
+- give **individual users their own allowance**, for example someone onboarding a new team.
+
+Users see a note above the question box from 50% of their allowance, a warning from 80%, and a
+clear message with the reset date once it's used up. Admins listed in `CHAT_ADMINS` aren't limited.
+A question that has started always finishes, so a user can go over by at most one answer;
+`Chat:MaxAnswerTokens` caps how long one answer can be.
+
 ### Keeping the index up to date
 
 New commits are picked up two ways. Both feed the same queue, so a push seen both ways is
@@ -351,6 +372,7 @@ needs two headers:
 |---|---|
 | `GET /api/info` | Name, version, organization, and whether the extension secret is set (no sign-in needed) |
 | `GET /api/me` | The signed-in user |
+| `GET /api/me/usage` | The user's usage of their allowance, as percentages, with reset times |
 | `GET /api/repositories` | Indexed repositories the user can read, with branches and index status |
 | `POST /api/chat` | Ask a question; the answer streams back as Server-Sent Events |
 | `GET /api/conversations` | The user's conversations, newest first |
@@ -358,6 +380,9 @@ needs two headers:
 | `DELETE /api/conversations/{id}` | Delete a conversation |
 | `GET /api/admin/settings[?projectId=]` | Organization defaults (and a project's overrides). Keys are never returned, only whether one is set |
 | `PUT /api/admin/settings`, `PUT/DELETE /api/admin/projects/{id}/settings` | Save organization defaults or project overrides (admins). Changing the embedding model queues full re-indexing |
+| `GET /api/admin/usage[?month=2026-11]` | Usage report: totals, cost, per-user usage and allowances, prices (admins) |
+| `PUT /api/admin/usage/settings` | Currency, monthly allowance per user (`null` = no limit) and prices per chat model (admins) |
+| `PUT /api/admin/usage/users/{userId}` | A user's own monthly allowance (`null` = back to the organization's) (admins) |
 | `POST /api/admin/settings/test` | Try the saved settings with one embedding and one chat call (admins) |
 | `GET /api/admin/projects/{id}/repositories` | A project's repositories with indexed branches and status |
 | `GET/PUT /api/admin/repositories/{id}/branches` | List a repository's branches; set which are indexed (admins) |
@@ -380,7 +405,8 @@ The stream sends these events in order:
 When the selected repositories don't contain the answer, the reply says so and `citations`
 lists the closest files with `used: false` (and `answerFound: false`). Problems found before
 streaming starts (no access to a repository, branch not indexed, empty question) return an
-HTTP error with a readable `detail`. Each user can ask `CHAT_REQUESTS_PER_MINUTE` questions per
+HTTP error with a readable `detail`; a user who has used their allowance gets `429` with the
+reset time. Each user can ask `CHAT_REQUESTS_PER_MINUTE` questions per
 minute (default 20), and conversations with no new messages for `CHAT_RETENTION_DAYS` (default 30)
 are deleted.
 
@@ -419,6 +445,7 @@ nesting (for example `AzureDevOps__Organization`).
 | `AzureDevOps:ExtensionSecret` | Yes, to chat | — | Validates calls from the extension |
 | `Chat:RetentionDays` | No | 30 | Delete conversations with no new messages for this long |
 | `Chat:RequestsPerMinute` | No | 20 | Questions per user per minute |
+| `Chat:DailyCapPercent` | No | 20 | When allowances are on: the most a user can spend in one day, as a percentage of their monthly allowance (`CHAT_DAILY_CAP_PERCENT`) |
 | `Chat:MaxSources` / `ContextTokens` / `MaxAnswerTokens` | No | 12 / 8000 / 4000 | How much code goes into the prompt, and the answer length limit |
 | `Security:AllowedOrigins` | From phase 4 | — | Browser origin of the installed extension |
 | `Database:MigrateOnStartup` | No | true | Apply database migrations when the API starts |

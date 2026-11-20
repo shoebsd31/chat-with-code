@@ -5,6 +5,7 @@ using ChatWithCode.Core.Abstractions;
 using ChatWithCode.Core.Domain;
 using ChatWithCode.Core.Indexing;
 using ChatWithCode.Data;
+using ChatWithCode.Data.Usage;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChatWithCode.Worker.Indexing;
@@ -21,7 +22,8 @@ public sealed class QuestionSuggester(
     IModelSettingsResolver settingsResolver,
     IChatModelFactory chatModels,
     ITokenCounter tokens,
-    ILogger<QuestionSuggester> logger)
+    ILogger<QuestionSuggester> logger,
+    UsageLedger? usage = null)
 {
     internal const int MaxQuestions = 5;
     private const int MaxReadmeTokens = 3000;
@@ -93,8 +95,17 @@ public sealed class QuestionSuggester(
             .Append(readmeText.Length > 0 ? $"README ({readme!.Path}):\n{readmeText}" : "The repository has no README.")
             .ToString();
 
-        var reply = await chatModels.Create(settings).CompleteAsync(
-            new ChatRequest(SystemPrompt, [new ChatMessage(MessageRole.User, prompt)], MaxOutputTokens: 1000), cancellationToken);
+        var request = new ChatRequest(SystemPrompt, [new ChatMessage(MessageRole.User, prompt)], MaxOutputTokens: 1000);
+        var result = await chatModels.Create(settings).CompleteWithUsageAsync(request, cancellationToken);
+        var reply = result.Text;
+        if (usage is not null)
+        {
+            // Organization usage (no user): shown in the admin report, not counted against anyone's allowance.
+            await usage.RecordAsync(
+                repo.OrganizationId, null, null, repo.AdoProjectId, settings.ChatDeployment ?? "unknown", UsageKind.StarterQuestions,
+                result.PromptTokens ?? tokens.Count(SystemPrompt) + tokens.Count(prompt), result.CompletionTokens ?? tokens.Count(reply), cancellationToken);
+        }
+
         var questions = Parse(reply);
         if (questions.Count == 0)
         {

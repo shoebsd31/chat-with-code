@@ -1,4 +1,4 @@
-import type { AdminRepository, Api, ChatEvent, Citation, Conversation, ConversationSummary, ModelSettings, Repository, SaveSettings } from "../common/api";
+import type { AdminRepository, Api, ChatEvent, Citation, Conversation, ConversationSummary, ModelSettings, Repository, SaveSettings, SaveUsageSettings, UsageReport } from "../common/api";
 
 /**
  * Local development only: an in-browser stand-in for the backend with sample data, so the
@@ -178,7 +178,20 @@ export function createMockApi(): Api {
       reindex: async (repositoryId, branch) => {
         adminRepos = adminRepos.map((r) => (r.id !== repositoryId ? r : { ...r, branches: r.branches.map((b) => (b.name === branch ? { ...b, status: "Queued", lastError: null } : b)) }));
       },
+      usage: async (month) => delay(250).then(() => usageReport(month)),
+      saveUsageSettings: async (values) => {
+        await delay(300);
+        usageSettings = { ...values };
+        return usageReport();
+      },
+      setUserAllowance: async (userId, monthlyAllowance, userName) => {
+        await delay(250);
+        if (monthlyAllowance === null) delete ownAllowances[userId];
+        else ownAllowances[userId] = { amount: monthlyAllowance, name: userName ?? null };
+        return usageReport();
+      },
     },
+    myUsage: async () => ({ limited: true, exempt: false, monthPercent: 62, dayPercent: 35, monthResetsAt: nextMonth().toISOString(), dayResetsAt: tomorrow().toISOString() }),
     repositories: async () => delay(300).then(() => repositories),
     conversations: async () => conversations.map(({ id, title, updatedAt, targets }): ConversationSummary => ({ id, title, updatedAt, targets })),
     conversation: async (id) => conversations.find((c) => c.id === id) ?? Promise.reject(new Error("That conversation doesn't exist anymore.")),
@@ -230,4 +243,49 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       reject(new DOMException("Aborted", "AbortError"));
     });
   });
+}
+
+// ---------------------------------------------------------------- usage (preview data)
+
+let usageSettings: SaveUsageSettings = { currency: "USD", monthlyAllowance: 5, prices: [{ model: "gpt-6-luna", inputPerMillion: 1.1, outputPerMillion: 4.4 }] };
+const ownAllowances: Record<string, { amount: number; name: string | null }> = {};
+const usageUsers = [
+  { userId: "u1", userName: "Ada Lovelace", questions: 212, inputTokens: 2_350_000, outputTokens: 260_000 },
+  { userId: "u2", userName: "Grace Hopper", questions: 96, inputTokens: 1_020_000, outputTokens: 118_000 },
+  { userId: "u3", userName: "Alan Turing", questions: 41, inputTokens: 460_000, outputTokens: 47_000 },
+  { userId: "u4", userName: "Katherine Johnson", questions: 7, inputTokens: 80_000, outputTokens: 9_000 },
+];
+
+function usageReport(month?: string): UsageReport {
+  const price = usageSettings.prices.find((p) => p.model === "gpt-6-luna");
+  const cost = (input: number, output: number) => (price ? Math.round(((input * price.inputPerMillion + output * price.outputPerMillion) / 1_000_000) * 10_000) / 10_000 : 0);
+  const users = usageUsers.map((u) => {
+    const own = ownAllowances[u.userId]?.amount ?? null;
+    const allowance = own ?? usageSettings.monthlyAllowance;
+    const c = cost(u.inputTokens, u.outputTokens);
+    return { ...u, cost: c, ownAllowance: own, allowance, percent: allowance ? Math.floor((c / allowance) * 100) : 0 };
+  });
+  const sum = (f: (u: (typeof users)[number]) => number) => users.reduce((t, u) => t + f(u), 0);
+  return {
+    month: month ?? new Date().toISOString().slice(0, 7),
+    currency: usageSettings.currency,
+    monthlyAllowance: usageSettings.monthlyAllowance,
+    dailyCapPercent: 20,
+    prices: usageSettings.prices,
+    models: ["gpt-6-luna", "gpt-6-luna-mini"],
+    unpricedModels: [],
+    total: { questions: sum((u) => u.questions), inputTokens: sum((u) => u.inputTokens) + 40_000, outputTokens: sum((u) => u.outputTokens) + 6_000, cost: Math.round((sum((u) => u.cost) + cost(40_000, 6_000)) * 10_000) / 10_000 },
+    organization: { questions: 0, inputTokens: 40_000, outputTokens: 6_000, cost: cost(40_000, 6_000) },
+    users,
+  };
+}
+
+function nextMonth() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
+function tomorrow() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 }

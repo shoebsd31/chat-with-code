@@ -158,6 +158,60 @@ export interface PushSetup {
   pollIntervalMinutes: number;
 }
 
+/** The signed-in user's usage against their allowance (percentages only). */
+export interface MyUsage {
+  limited: boolean;
+  exempt: boolean;
+  monthPercent: number;
+  dayPercent: number;
+  monthResetsAt: string;
+  dayResetsAt: string;
+}
+
+export interface ModelPrice {
+  model: string;
+  inputPerMillion: number;
+  outputPerMillion: number;
+}
+
+export interface UsageTotals {
+  questions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+}
+
+export interface UserUsage {
+  userId: string;
+  userName: string | null;
+  questions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  ownAllowance: number | null;
+  allowance: number | null;
+  percent: number;
+}
+
+export interface UsageReport {
+  month: string;
+  currency: string;
+  monthlyAllowance: number | null;
+  dailyCapPercent: number;
+  prices: ModelPrice[];
+  models: string[];
+  unpricedModels: string[];
+  total: UsageTotals;
+  organization: UsageTotals;
+  users: UserUsage[];
+}
+
+export interface SaveUsageSettings {
+  currency: string;
+  monthlyAllowance: number | null;
+  prices: ModelPrice[];
+}
+
 export interface AdminApi {
   settings(projectId?: string): Promise<SettingsResponse>;
   saveSettings(values: SaveSettings, projectId?: string): Promise<{ settings: SettingsResponse; reindexQueued: number }>;
@@ -168,6 +222,9 @@ export interface AdminApi {
   setBranches(repositoryId: string, branches: string[]): Promise<AdminRepository>;
   reindex(repositoryId: string, branch: string, full: boolean): Promise<void>;
   pushSetup(): Promise<PushSetup>;
+  usage(month?: string): Promise<UsageReport>;
+  saveUsageSettings(values: SaveUsageSettings): Promise<UsageReport>;
+  setUserAllowance(userId: string, monthlyAllowance: number | null, userName?: string | null): Promise<UsageReport>;
 }
 
 export type ChatEvent =
@@ -200,6 +257,7 @@ export interface Api {
   baseUrl: string;
   info(): Promise<ServiceInfo>;
   me(): Promise<Me>;
+  myUsage(): Promise<MyUsage>;
   repositories(): Promise<Repository[]>;
   conversations(): Promise<ConversationSummary[]>;
   conversation(id: string): Promise<Conversation>;
@@ -248,6 +306,7 @@ export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: F
     baseUrl: root,
     info: () => getJson<ServiceInfo>("/api/info", true),
     me: () => getJson<Me>("/api/me"),
+    myUsage: () => getJson<MyUsage>("/api/me/usage"),
     repositories: () => getJson<Repository[]>("/api/repositories"),
     conversations: () => getJson<ConversationSummary[]>("/api/conversations"),
     conversation: (id) => getJson<Conversation>(`/api/conversations/${encodeURIComponent(id)}`),
@@ -264,6 +323,10 @@ export function createApi(host: Host, baseUrl: string = BackendUrl, fetchImpl: F
       setBranches: (repositoryId, branches) => sendJson("PUT", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/branches`, { branches }),
       pushSetup: () => getJson<PushSetup>("/api/admin/push-notifications"),
       reindex: (repositoryId, branch, full) => sendJson("POST", `/api/admin/repositories/${encodeURIComponent(repositoryId)}/reindex`, { branch, full }),
+      usage: (month) => getJson<UsageReport>(`/api/admin/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`),
+      saveUsageSettings: (values) => sendJson("PUT", "/api/admin/usage/settings", values),
+      setUserAllowance: (userId, monthlyAllowance, userName) =>
+        sendJson("PUT", `/api/admin/usage/users/${encodeURIComponent(userId)}`, { monthlyAllowance, userName: userName ?? null }),
     },
     ask: async (request, onEvent, signal) => {
       const response = await send("/api/chat", {
