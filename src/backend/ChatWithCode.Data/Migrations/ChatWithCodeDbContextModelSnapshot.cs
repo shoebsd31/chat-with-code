@@ -659,6 +659,154 @@ namespace ChatWithCode.Data.Migrations
                     b.ToTable("repositories", (string)null);
                 });
 
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UsageRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("input_tokens");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("model");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("output_tokens");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usage_records");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_usage_records_organization_id_created_at");
+
+                    b.HasIndex("OrganizationId", "UserId", "CreatedAt")
+                        .HasDatabaseName("ix_usage_records_organization_id_user_id_created_at");
+
+                    b.ToTable("usage_records", (string)null);
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UsageSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<decimal?>("MonthlyAllowance")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("monthly_allowance");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usage_settings");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usage_settings_organization_id");
+
+                    b.ToTable("usage_settings", (string)null);
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UserAllowance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("MonthlyAllowance")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("monthly_allowance");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_allowances");
+
+                    b.HasIndex("OrganizationId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_allowances_organization_id_user_id");
+
+                    b.ToTable("user_allowances", (string)null);
+                });
+
             modelBuilder.Entity("ChatWithCode.Data.Entities.Citation", b =>
                 {
                     b.HasOne("ChatWithCode.Data.Entities.Message", null)
@@ -769,6 +917,66 @@ namespace ChatWithCode.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_repositories_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UsageRecord", b =>
+                {
+                    b.HasOne("ChatWithCode.Data.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_usage_records_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UsageSettings", b =>
+                {
+                    b.HasOne("ChatWithCode.Data.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_usage_settings_organizations_organization_id");
+
+                    b.OwnsMany("ChatWithCode.Data.Entities.ModelPrice", "Prices", b1 =>
+                        {
+                            b1.Property<Guid>("UsageSettingsId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<decimal>("InputPerMillion");
+
+                            b1.Property<string>("Model")
+                                .IsRequired()
+                                .HasMaxLength(200);
+
+                            b1.Property<decimal>("OutputPerMillion");
+
+                            b1.HasKey("UsageSettingsId", "__synthesizedOrdinal");
+
+                            b1.ToTable("usage_settings");
+
+                            b1
+                                .ToJson("prices")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("UsageSettingsId")
+                                .HasConstraintName("fk_usage_settings_usage_settings_usage_settings_id");
+                        });
+
+                    b.Navigation("Prices");
+                });
+
+            modelBuilder.Entity("ChatWithCode.Data.Entities.UserAllowance", b =>
+                {
+                    b.HasOne("ChatWithCode.Data.Entities.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_allowances_organizations_organization_id");
                 });
 
             modelBuilder.Entity("ChatWithCode.Data.Entities.Conversation", b =>

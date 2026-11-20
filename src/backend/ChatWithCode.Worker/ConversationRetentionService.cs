@@ -38,6 +38,8 @@ public sealed class ConversationRetentionService(
         }
     }
 
+    internal const int UsageMonthsKept = 13;
+
     internal async Task<int> DeleteExpiredAsync(CancellationToken cancellationToken)
     {
         var cutoff = clock.GetUtcNow() - TimeSpan.FromDays(options.Value.RetentionDays);
@@ -49,6 +51,14 @@ public sealed class ConversationRetentionService(
         if (deleted > 0)
         {
             logger.LogInformation("Deleted {Count} conversation(s) with no activity for {Days} days", deleted, options.Value.RetentionDays);
+        }
+
+        // Usage records are kept for 13 months (a year of monthly reports), independently of chat history.
+        var usageCutoff = clock.GetUtcNow().AddMonths(-UsageMonthsKept);
+        var usage = await db.UsageRecords.Where(r => r.CreatedAt < usageCutoff).ExecuteDeleteAsync(cancellationToken);
+        if (usage > 0)
+        {
+            logger.LogInformation("Deleted {Count} usage record(s) older than {Months} months", usage, UsageMonthsKept);
         }
 
         return deleted;

@@ -29,6 +29,15 @@ public static class AdminEndpoints
                 }
             });
 
+        admin.MapGet("/usage", (string? month, HttpContext http, UsageAdminService service, CancellationToken ct) =>
+            service.ReportAsync(http.GetUserAccess(), month, ct));
+
+        admin.MapPut("/usage/settings", (SaveUsageSettingsRequest request, HttpContext http, UsageAdminService service, CancellationToken ct) =>
+            service.SaveSettingsAsync(http.GetUserAccess(), request, ct));
+
+        admin.MapPut("/usage/users/{userId}", (string userId, SetUserAllowanceRequest request, HttpContext http, UsageAdminService service, CancellationToken ct) =>
+            service.SetUserAllowanceAsync(http.GetUserAccess(), userId, request, ct));
+
         admin.MapGet("/settings", (Guid? projectId, HttpContext http, AdminService service, CancellationToken ct) =>
             service.GetSettingsAsync(http.GetUserAccess(), projectId, ct));
 

@@ -9,6 +9,7 @@ using ChatWithCode.Core.Indexing;
 using ChatWithCode.Core.Options;
 using ChatWithCode.Data;
 using ChatWithCode.Data.Entities;
+using ChatWithCode.Data.Usage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -22,6 +23,7 @@ public sealed class ChatRequestException(int statusCode, string message) : Excep
 
 /// <summary>Everything checked and loaded, ready to stream an answer.</summary>
 public sealed record PreparedChat(
+    Guid OrganizationId,
     UserAccess Access,
     Conversation Conversation,
     bool IsNew,
@@ -43,7 +45,8 @@ public sealed class ChatService(
     IOptions<ChatOptions> chatOptions,
     IOptions<AzureDevOpsOptions> adoOptions,
     TimeProvider clock,
-    ILogger<ChatService> logger)
+    ILogger<ChatService> logger,
+    UsageLedger usage)
 {
     private readonly ChatOptions _options = chatOptions.Value;
 
@@ -101,6 +104,9 @@ public sealed class ChatService(
             }
         }
 
+        var organizationId = await db.Organizations.Where(o => o.Name == adoOptions.Value.Organization).Select(o => o.Id).SingleAsync(cancellationToken);
+        await CheckAllowanceAsync(organizationId, access, cancellationToken);
+
         var isNew = conversation is null;
         if (conversation is null)
         {
@@ -108,7 +114,7 @@ public sealed class ChatService(
             conversation = new Conversation
             {
                 Id = Guid.CreateVersion7(),
-                OrganizationId = await db.Organizations.Where(o => o.Name == adoOptions.Value.Organization).Select(o => o.Id).SingleAsync(cancellationToken),
+                OrganizationId = organizationId,
                 UserId = access.User.Id,
                 Title = Title(question),
                 CreatedAt = now,
@@ -117,7 +123,40 @@ public sealed class ChatService(
         }
 
         conversation.Targets = targets.Select(t => new ConversationTarget { RepositoryId = t.RepositoryId, Branch = t.Branch }).ToList();
-        return new PreparedChat(access, conversation, isNew, question, repositories, targets);
+        return new PreparedChat(organizationId, access, conversation, isNew, question, repositories, targets);
+    }
+
+    /// <summary>Refuse the question when the user has used their allowance (admins aren't limited).</summary>
+    private async Task CheckAllowanceAsync(Guid organizationId, UserAccess access, CancellationToken cancellationToken)
+    {
+        if (access.IsAdmin)
+        {
+            return;
+        }
+
+        var status = await usage.StatusAsync(organizationId, access.User.Id, _options.DailyCapPercent, cancellationToken);
+        if (AllowanceMessage(status, clock.GetUtcNow(), _options.DailyCapPercent) is { } message)
+        {
+            throw new ChatRequestException(429, message);
+        }
+    }
+
+    /// <summary>Why the user can't ask right now, or null when they can.</summary>
+    public static string? AllowanceMessage(UsageStatus status, DateTimeOffset now, int dailyCapPercent)
+    {
+        if (status.MonthUsedUp)
+        {
+            return $"You've used this month's Chat with code allowance. It resets on {status.MonthResetsAt.ToString("d MMMM", System.Globalization.CultureInfo.InvariantCulture)} (UTC). " +
+                "Ask an admin if you need more.";
+        }
+
+        if (status.DayUsedUp)
+        {
+            var hours = Math.Max(1, (int)Math.Ceiling((status.DayResetsAt - now).TotalHours));
+            return $"You've reached today's limit ({dailyCapPercent}% of your monthly allowance). It resets at midnight UTC, in about {hours} hour{(hours == 1 ? "" : "s")}.";
+        }
+
+        return null;
     }
 
     /// <summary>Stream the answer as Server-Sent Events. Errors are reported as an "error" event.</summary>
@@ -175,14 +214,15 @@ public sealed class ChatService(
             settingsByProject[projectId] = await settingsResolver.ResolveAsync(projectId, cancellationToken);
         }
 
-        var primary = settingsByProject[chat.Repositories.Single(r => r.AdoRepositoryId == chat.Targets[0].RepositoryId).AdoProjectId];
+        var primaryProjectId = chat.Repositories.Single(r => r.AdoRepositoryId == chat.Targets[0].RepositoryId).AdoProjectId;
+        var primary = settingsByProject[primaryProjectId];
         var chatModel = chatModels.Create(primary);
 
         // A follow-up like "and where is it tested?" is rewritten so search knows what "it" is.
         var searchText = chat.Question;
         if (history.Count > 0)
         {
-            searchText = await RewriteAsync(chatModel, chat.Question, history, cancellationToken);
+            searchText = await RewriteAsync(chat, primaryProjectId, primary, chatModel, history, cancellationToken);
         }
 
         var sources = await SearchAsync(chat, settingsByProject, searchText, cancellationToken);
@@ -198,15 +238,23 @@ public sealed class ChatService(
         else
         {
             var request = PromptBuilder.Answer(chat.Question, sources, history, _options.MaxAnswerTokens);
-            await foreach (var delta in chatModel.StreamAsync(request, cancellationToken))
+            try
             {
-                promptTokens = delta.PromptTokens ?? promptTokens;
-                completionTokens = delta.CompletionTokens ?? completionTokens;
-                if (delta.Text.Length > 0)
+                await foreach (var delta in chatModel.StreamAsync(request, cancellationToken))
                 {
-                    answer.Append(delta.Text);
-                    await output.WriteAsync(Event("delta", new DeltaEvent(delta.Text)), cancellationToken);
+                    promptTokens = delta.PromptTokens ?? promptTokens;
+                    completionTokens = delta.CompletionTokens ?? completionTokens;
+                    if (delta.Text.Length > 0)
+                    {
+                        answer.Append(delta.Text);
+                        await output.WriteAsync(Event("delta", new DeltaEvent(delta.Text)), cancellationToken);
+                    }
                 }
+            }
+            finally
+            {
+                // Recorded even when the user stops the answer or it fails midway: those tokens were used.
+                await RecordUsageAsync(chat, primaryProjectId, primary, UsageKind.Answer, request, promptTokens, completionTokens, answer.ToString());
             }
         }
 
@@ -270,11 +318,16 @@ public sealed class ChatService(
         return ContextBuilder.Build(hits, tokens, _options.MaxSources, _options.ContextTokens);
     }
 
-    private async Task<string> RewriteAsync(IChatModel model, string question, IReadOnlyList<ChatMessage> history, CancellationToken cancellationToken)
+    private async Task<string> RewriteAsync(
+        PreparedChat chat, Guid projectId, EffectiveModelSettings settings, IChatModel model, IReadOnlyList<ChatMessage> history, CancellationToken cancellationToken)
     {
+        var question = chat.Question;
         try
         {
-            var rewritten = (await model.CompleteAsync(PromptBuilder.Rewrite(question, history), cancellationToken)).Trim();
+            var request = PromptBuilder.Rewrite(question, history);
+            var result = await model.CompleteWithUsageAsync(request, cancellationToken);
+            await RecordUsageAsync(chat, projectId, settings, UsageKind.Rewrite, request, result.PromptTokens, result.CompletionTokens, result.Text);
+            var rewritten = result.Text.Trim();
             return rewritten.Length is > 0 and < 2000 ? rewritten : question;
         }
         catch (InvalidOperationException ex)
@@ -282,6 +335,26 @@ public sealed class ChatService(
             // Not fatal: search with the question as typed.
             logger.LogWarning(ex, "Could not rewrite the follow-up question; searching with it as typed");
             return question;
+        }
+    }
+
+    /// <summary>Record a model call for the user's allowance. Counts the tokens itself when the model didn't report them.</summary>
+    private async Task RecordUsageAsync(
+        PreparedChat chat, Guid projectId, EffectiveModelSettings settings, UsageKind kind, ChatRequest request, int? promptTokens, int? completionTokens, string output)
+    {
+        try
+        {
+            var input = promptTokens ?? tokens.Count(request.SystemPrompt) + request.Messages.Sum(m => tokens.Count(m.Content) + 4);
+            var produced = completionTokens ?? tokens.Count(output);
+            await usage.RecordAsync(
+                chat.OrganizationId, chat.Access.User.Id, chat.Access.User.DisplayName, projectId, settings.ChatDeployment ?? "unknown",
+                kind, input, produced, CancellationToken.None);
+        }
+#pragma warning disable CA1031 // A failure to record usage must never lose the user's answer.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            logger.LogError(ex, "Couldn't record usage for {User}", chat.Access.User.Id);
         }
     }
 

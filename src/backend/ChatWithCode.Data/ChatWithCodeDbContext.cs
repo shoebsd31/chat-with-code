@@ -15,6 +15,9 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Citation> Citations => Set<Citation>();
     public DbSet<IndexedFile> IndexedFiles => Set<IndexedFile>();
+    public DbSet<UsageRecord> UsageRecords => Set<UsageRecord>();
+    public DbSet<UsageSettings> UsageSettings => Set<UsageSettings>();
+    public DbSet<UserAllowance> UserAllowances => Set<UserAllowance>();
     public DbSet<CodeChunkRecord> CodeChunks => Set<CodeChunkRecord>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -113,6 +116,40 @@ public sealed class ChatWithCodeDbContext(DbContextOptions<ChatWithCodeDbContext
         });
 
         modelBuilder.Entity<IndexedBranch>(e => e.Property(x => x.SuggestionsSource).HasMaxLength(100));
+
+        modelBuilder.Entity<UsageRecord>(e =>
+        {
+            e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.OrganizationId, x.UserId, x.CreatedAt }); // a user's usage this month/day
+            e.HasIndex(x => new { x.OrganizationId, x.CreatedAt });            // the admin report, clean-up
+            e.Property(x => x.UserId).HasMaxLength(200);
+            e.Property(x => x.UserName).HasMaxLength(200);
+            e.Property(x => x.Model).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<UsageSettings>(e =>
+        {
+            e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.OrganizationId).IsUnique();
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.MonthlyAllowance).HasPrecision(12, 2);
+            e.Property(x => x.UpdatedBy).HasMaxLength(200);
+            e.OwnsMany(x => x.Prices, p =>
+            {
+                p.ToJson();
+                p.Property(x => x.Model).HasMaxLength(200);
+            });
+        });
+
+        modelBuilder.Entity<UserAllowance>(e =>
+        {
+            e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.OrganizationId, x.UserId }).IsUnique();
+            e.Property(x => x.UserId).HasMaxLength(200);
+            e.Property(x => x.UserName).HasMaxLength(200);
+            e.Property(x => x.MonthlyAllowance).HasPrecision(12, 2);
+            e.Property(x => x.UpdatedBy).HasMaxLength(200);
+        });
 
         modelBuilder.Entity<CodeChunkRecord>(e =>
         {

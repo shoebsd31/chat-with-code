@@ -244,6 +244,175 @@ public sealed class ChatApiTests(PostgresFixture postgres)
         Assert.True(info!.ExtensionConnected);
     }
 
+    // ---------------------------------------------------------------- usage allowances
+
+    private static async Task SetUsageAsync(ChatApp app, decimal? allowance, decimal inputPrice = 10m, decimal outputPrice = 40m, decimal? adaAllowance = null)
+    {
+        await using var db = app.Db.NewContext();
+        var orgId = await db.Organizations.Select(o => o.Id).SingleAsync();
+        db.UsageSettings.Add(new UsageSettings
+        {
+            Id = Guid.NewGuid(), OrganizationId = orgId, Currency = "EUR", MonthlyAllowance = allowance, UpdatedAt = DateTimeOffset.UtcNow,
+            Prices = [new ModelPrice { Model = "gpt-6-luna", InputPerMillion = inputPrice, OutputPerMillion = outputPrice }],
+        });
+        if (adaAllowance is { } own)
+        {
+            db.UserAllowances.Add(new UserAllowance { Id = Guid.NewGuid(), OrganizationId = orgId, UserId = "user-ada", MonthlyAllowance = own, UpdatedAt = DateTimeOffset.UtcNow });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Usage worth outputTokens × 40 / 1M at the default test price.</summary>
+    private static async Task SpendAsync(ChatApp app, int outputTokens, string user = "user-ada")
+    {
+        await using var db = app.Db.NewContext();
+        db.UsageRecords.Add(new UsageRecord
+        {
+            Id = Guid.NewGuid(), OrganizationId = await db.Organizations.Select(o => o.Id).SingleAsync(), UserId = user, UserName = user,
+            Model = "gpt-6-luna", Kind = UsageKind.Answer, OutputTokens = outputTokens, CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static AskRequest Question(string text = "How does OrderService submit orders?") => new(text, Targets: [new ChatTarget(WebAppId, "refs/heads/main")]);
+
+    [Fact]
+    public async Task Every_answer_is_recorded_even_without_limits()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        using var client = app.Client();
+
+        await AskAsync(client, Question());
+
+        await using var db = app.Db.NewContext();
+        var record = await db.UsageRecords.SingleAsync();
+        Assert.Equal(("user-ada", "Ada Lovelace", "gpt-6-luna", UsageKind.Answer, 120, 30), (record.UserId, record.UserName, record.Model, record.Kind, record.InputTokens, record.OutputTokens));
+        var mine = await client.GetFromJsonAsync<JsonElement>(Url("/api/me/usage"));
+        Assert.False(mine.GetProperty("limited").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Rewriting_a_follow_up_counts_too_with_estimated_tokens()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        using var client = app.Client();
+        var first = await AskAsync(client, Question("What does OrderService do?"));
+        var conversationId = first.Single(e => e.Type == "conversation").Data.GetProperty("conversationId").GetGuid();
+
+        await AskAsync(client, new AskRequest("and where is it tested?", conversationId));
+
+        await using var db = app.Db.NewContext();
+        var rewrite = await db.UsageRecords.SingleAsync(r => r.Kind == UsageKind.Rewrite);
+        Assert.True(rewrite.InputTokens > 0 && rewrite.OutputTokens > 0, "the fake model reports no counts for rewrites, so they're estimated");
+    }
+
+    [Fact]
+    public async Task Questions_are_refused_once_this_months_allowance_is_used()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        await SetUsageAsync(app, allowance: 5m);
+        await SpendAsync(app, outputTokens: 200_000); // 8.00 > 5.00
+        using var client = app.Client();
+
+        var response = await client.PostAsJsonAsync(Url("/api/chat"), Question());
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Contains("this month's Chat with code allowance", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        var mine = await client.GetFromJsonAsync<JsonElement>(Url("/api/me/usage"));
+        Assert.True(mine.GetProperty("limited").GetBoolean());
+        Assert.Equal(160, mine.GetProperty("monthPercent").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_daily_cap_is_a_fifth_of_the_monthly_allowance()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        await SetUsageAsync(app, allowance: 10m); // daily cap 2.00
+        await SpendAsync(app, outputTokens: 40_000); // 1.60: still fine
+        using var client = app.Client();
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url("/api/chat"), Question())).StatusCode);
+
+        await SpendAsync(app, outputTokens: 20_000); // 2.40 today, 24% of the month
+        var response = await client.PostAsJsonAsync(Url("/api/chat"), Question());
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Contains("today's limit (20% of your monthly allowance)", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Admins_are_not_limited()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres, admins: "user-ada");
+        await SetUsageAsync(app, allowance: 5m);
+        await SpendAsync(app, outputTokens: 200_000);
+        using var client = app.Client();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url("/api/chat"), Question())).StatusCode);
+        var mine = await client.GetFromJsonAsync<JsonElement>(Url("/api/me/usage"));
+        Assert.True(mine.GetProperty("exempt").GetBoolean());
+        Assert.False(mine.GetProperty("limited").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_users_own_allowance_replaces_the_organizations()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        await SetUsageAsync(app, allowance: 5m, adaAllowance: 100m);
+        await SpendAsync(app, outputTokens: 200_000); // 8.00: over 5, well under Ada's 100 and her daily 20
+        using var client = app.Client();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url("/api/chat"), Question())).StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleting_a_conversation_does_not_reset_usage()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres);
+        using var client = app.Client();
+        var events = await AskAsync(client, Question());
+        var conversationId = events.Single(e => e.Type == "conversation").Data.GetProperty("conversationId").GetGuid();
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync(Url($"/api/conversations/{conversationId}"))).StatusCode);
+
+        await using var db = app.Db.NewContext();
+        Assert.Equal(1, await db.UsageRecords.CountAsync(r => r.UserId == "user-ada"));
+    }
+
+    [Fact]
+    public async Task Admins_see_the_usage_report_and_set_allowances()
+    {
+        await using var app = await ChatApp.CreateAsync(postgres, admins: "user-ada");
+        await SetUsageAsync(app, allowance: 5m);
+        await SpendAsync(app, outputTokens: 50_000, user: "user-grace"); // 2.00
+        using var admin = app.Client();
+        using var grace = app.Client(userToken: "grace-token");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await grace.GetAsync(Url("/api/admin/usage"))).StatusCode);
+
+        var report = await admin.GetFromJsonAsync<JsonElement>(Url("/api/admin/usage"));
+        Assert.Equal("EUR", report.GetProperty("currency").GetString());
+        var graceRow = report.GetProperty("users").EnumerateArray().Single(u => u.GetProperty("userId").GetString() == "user-grace");
+        Assert.Equal(2.00m, graceRow.GetProperty("cost").GetDecimal());
+        Assert.Equal(40, graceRow.GetProperty("percent").GetInt32());
+
+        var updated = await (await admin.PutAsJsonAsync(Url("/api/admin/usage/users/user-grace"), new { monthlyAllowance = 20m, userName = "Grace Hopper" })).Content.ReadFromJsonAsync<JsonElement>();
+        graceRow = updated.GetProperty("users").EnumerateArray().Single(u => u.GetProperty("userId").GetString() == "user-grace");
+        Assert.Equal(20m, graceRow.GetProperty("ownAllowance").GetDecimal());
+        Assert.Equal(10, graceRow.GetProperty("percent").GetInt32());
+
+        var bad = await admin.PutAsJsonAsync(Url("/api/admin/usage/settings"), new { currency = "EUR", monthlyAllowance = -1m, prices = Array.Empty<object>() });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var saved = await (await admin.PutAsJsonAsync(Url("/api/admin/usage/settings"), new
+        {
+            currency = "GBP", monthlyAllowance = (decimal?)null,
+            prices = new[] { new { model = "gpt-6-luna", inputPerMillion = 1m, outputPerMillion = 2m } },
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("GBP", saved.GetProperty("currency").GetString());
+        Assert.Equal(JsonValueKind.Null, saved.GetProperty("monthlyAllowance").ValueKind);
+    }
+
     private static Uri Url(string path) => new(path, UriKind.Relative);
 
     private static string AppToken(string secret, DateTime? expires = null)
@@ -296,7 +465,7 @@ public sealed class ChatApiTests(PostgresFixture postgres)
         public TestDb Db { get; }
         public FakeChatModel Model { get; }
 
-        public static async Task<ChatApp> CreateAsync(PostgresFixture postgres, int requestsPerMinute = 100, string secret = Secret)
+        public static async Task<ChatApp> CreateAsync(PostgresFixture postgres, int requestsPerMinute = 100, string secret = Secret, string admins = "")
         {
             var connectionString = await postgres.CreateDatabaseAsync();
             var model = new FakeChatModel();
@@ -311,6 +480,7 @@ public sealed class ChatApiTests(PostgresFixture postgres)
                 .UseSetting("AzureOpenAI:ChatDeployment", "gpt-6-luna")
                 .UseSetting("Chat:RequestsPerMinute", requestsPerMinute.ToString(System.Globalization.CultureInfo.InvariantCulture))
                 .UseSetting("Security:DataProtectionKeysPath", Directory.CreateTempSubdirectory("cwc-keys").FullName)
+                .UseSetting("Admin:Users", admins)
                 .ConfigureTestServices(services =>
                 {
                     services.AddSingleton<IAdoUserClient>(new FakeAdoUserClient());

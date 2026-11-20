@@ -35,6 +35,10 @@ public sealed class ChatOptions
     [Range(1, 1000)]
     public int RequestsPerMinute { get; set; } = 20;
 
+    /// <summary>When usage allowances are on: the most a user can use in one day, as a percentage of their monthly allowance.</summary>
+    [Range(1, 100)]
+    public int DailyCapPercent { get; set; } = 20;
+
     /// <summary>Longest question accepted, in characters.</summary>
     [Range(100, 20_000)]
     public int MaxQuestionLength { get; set; } = 4000;

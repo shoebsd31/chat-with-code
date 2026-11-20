@@ -38,6 +38,7 @@ public static class DataServiceCollectionExtensions
                 TimeSpan.FromSeconds(10))));
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IndexJobQueue>();
+        services.AddScoped<Usage.UsageLedger>();
         services.AddScoped<DatabaseInitializer>();
 
         // The API and the worker share one key ring (a mounted volume), so either can decrypt API keys.
