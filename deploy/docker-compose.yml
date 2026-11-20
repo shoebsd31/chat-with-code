@@ -51,6 +51,7 @@ services:
       Chat__RetentionDays: ${CHAT_RETENTION_DAYS:-30}
       Admin__Users: ${CHAT_ADMINS:-}
       Chat__RequestsPerMinute: ${CHAT_REQUESTS_PER_MINUTE:-20}
+      Chat__DailyCapPercent: ${CHAT_DAILY_CAP_PERCENT:-20}
       Indexing__PollingEnabled: ${INDEX_POLLING_ENABLED:-true}
       Indexing__PollIntervalMinutes: ${INDEX_POLL_MINUTES:-0}
       Security__AllowedOrigins__0: ${EXTENSION_ORIGIN:-}
